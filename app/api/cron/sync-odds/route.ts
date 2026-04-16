@@ -1,14 +1,12 @@
 import { NextResponse } from 'next/server'
 import { syncMatchOdds } from '@/lib/sync/odds'
-import { hasMatchesInOddsWindow } from '@/lib/sync/scheduler'
+import { verifyCronAuth } from '@/lib/auth/cron'
 
-export async function POST() {
+async function handler(request: Request) {
+  const unauthorized = verifyCronAuth(request)
+  if (unauthorized) return unauthorized
+
   try {
-    const shouldSync = await hasMatchesInOddsWindow()
-    if (!shouldSync) {
-      return NextResponse.json({ skipped: true, reason: 'No matches in odds window' })
-    }
-
     const result = await syncMatchOdds()
     return NextResponse.json(result)
   } catch (error) {
@@ -16,3 +14,7 @@ export async function POST() {
     return NextResponse.json({ error: message }, { status: 500 })
   }
 }
+
+// Vercel Cron llega por GET; manual/curl puede usar POST
+export const GET = handler
+export const POST = handler

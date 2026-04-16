@@ -48,15 +48,15 @@ export function MatchCard({ match }: MatchCardProps) {
           <div className="flex gap-2">
             <div className="flex-1 rounded-lg border border-slate-600 bg-slate-700/50 px-3 py-2.5 text-center">
               <span className="block text-xs text-slate-400">1</span>
-              <span className="block text-sm font-semibold text-emerald-400">{formatOdds(match.odds_home)}</span>
+              <span className="block text-sm font-semibold text-[var(--casino-yellow)]">{formatOdds(match.odds_home)}</span>
             </div>
             <div className="flex-1 rounded-lg border border-slate-600 bg-slate-700/50 px-3 py-2.5 text-center">
               <span className="block text-xs text-slate-400">X</span>
-              <span className="block text-sm font-semibold text-emerald-400">{formatOdds(match.odds_draw)}</span>
+              <span className="block text-sm font-semibold text-[var(--casino-yellow)]">{formatOdds(match.odds_draw)}</span>
             </div>
             <div className="flex-1 rounded-lg border border-slate-600 bg-slate-700/50 px-3 py-2.5 text-center">
               <span className="block text-xs text-slate-400">2</span>
-              <span className="block text-sm font-semibold text-emerald-400">{formatOdds(match.odds_away)}</span>
+              <span className="block text-sm font-semibold text-[var(--casino-yellow)]">{formatOdds(match.odds_away)}</span>
             </div>
           </div>
         )}

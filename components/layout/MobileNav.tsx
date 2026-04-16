@@ -6,7 +6,7 @@ import { clsx } from 'clsx'
 
 const NAV_ITEMS = [
   { href: '/', label: 'Partidos', icon: '⚽' },
-  { href: '/bets', label: 'Apostar', icon: '🎰' },
+  { href: '/casino', label: 'Casino', icon: '🎰' },
   { href: '/trivia', label: 'Trivia', icon: '🧠' },
   { href: '/leaderboard', label: 'Ranking', icon: '🏆' },
   { href: '/dashboard', label: 'Perfil', icon: '👤' },
@@ -26,7 +26,7 @@ export function MobileNav() {
               href={href}
               className={clsx(
                 'flex flex-col items-center gap-0.5 px-3 py-2 text-xs transition-colors min-h-[44px] min-w-[44px] justify-center',
-                isActive ? 'text-emerald-400' : 'text-slate-500 hover:text-slate-300'
+                isActive ? 'text-[var(--casino-yellow)]' : 'text-slate-500 hover:text-slate-300'
               )}
             >
               <span className="text-lg">{icon}</span>

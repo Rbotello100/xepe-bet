@@ -12,6 +12,13 @@ export interface ParlayLeg {
 
 const STORAGE_KEY = 'mundial-parlay'
 
+// Dispatch diferido para evitar "setState during render" cuando otros componentes
+// escuchan el evento y hacen setState sincrono.
+function notifyParlayUpdate() {
+  if (typeof window === 'undefined') return
+  queueMicrotask(() => window.dispatchEvent(new CustomEvent('parlay-updated')))
+}
+
 export function useParlay() {
   const [legs, setLegs] = useState<ParlayLeg[]>([])
 
@@ -25,16 +32,17 @@ export function useParlay() {
   const persist = useCallback((newLegs: ParlayLeg[]) => {
     setLegs(newLegs)
     localStorage.setItem(STORAGE_KEY, JSON.stringify(newLegs))
+    notifyParlayUpdate()
   }, [])
 
   const addLeg = useCallback((leg: ParlayLeg) => {
     setLegs(prev => {
-      // Don't add duplicate match
       if (prev.some(l => l.matchId === leg.matchId)) return prev
       const next = [...prev, leg]
       localStorage.setItem(STORAGE_KEY, JSON.stringify(next))
       return next
     })
+    notifyParlayUpdate()
   }, [])
 
   const removeLeg = useCallback((matchId: string) => {
@@ -43,6 +51,7 @@ export function useParlay() {
       localStorage.setItem(STORAGE_KEY, JSON.stringify(next))
       return next
     })
+    notifyParlayUpdate()
   }, [])
 
   const clearAll = useCallback(() => {

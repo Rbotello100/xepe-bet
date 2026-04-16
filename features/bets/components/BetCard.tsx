@@ -54,7 +54,7 @@ export function BetCard({ bet, currentOdds, locked }: BetCardProps) {
 
       <div className="flex items-center justify-between text-sm">
         <span className="text-slate-400">Apostado: {formatCredits(bet.amount)}</span>
-        <span className="text-emerald-400">
+        <span className="text-[var(--casino-yellow)]">
           {bet.status === 'cashed_out'
             ? `Cash out: ${formatCredits(bet.cash_out_amount!)}`
             : `Potencial: ${formatCredits(bet.potential_payout)}`

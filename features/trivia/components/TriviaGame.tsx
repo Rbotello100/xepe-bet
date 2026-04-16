@@ -77,7 +77,7 @@ export function TriviaGame({ questions }: TriviaGameProps) {
           {allCorrect ? 'Trivia Perfecta!' : `${correct} de ${total} correctas`}
         </h2>
         {result && result.credits_earned > 0 && (
-          <p className="text-lg text-emerald-400 font-semibold">+${result.credits_earned} creditos</p>
+          <p className="text-lg text-[var(--casino-yellow)] font-semibold">+${result.credits_earned} creditos</p>
         )}
         {!allCorrect && (
           <p className="text-sm text-slate-400">Necesitas responder TODAS correctamente para ganar creditos</p>
@@ -95,10 +95,10 @@ export function TriviaGame({ questions }: TriviaGameProps) {
             <div
               key={i}
               className={clsx('h-1.5 w-6 rounded-full', {
-                'bg-emerald-500': i < currentIndex || (i === currentIndex && revealed && selectedOption === question.correct_option),
+                'bg-[var(--casino-teal)]': i < currentIndex || (i === currentIndex && revealed && selectedOption === question.correct_option),
                 'bg-red-500': i < answers.length && !answers[i]?.is_correct,
                 'bg-slate-600': i > currentIndex,
-                'bg-emerald-500/50': i === currentIndex && !revealed,
+                'bg-[var(--casino-teal)]/50': i === currentIndex && !revealed,
               })}
             />
           ))}
@@ -115,7 +115,7 @@ export function TriviaGame({ questions }: TriviaGameProps) {
             disabled={revealed}
             className={clsx(
               'w-full rounded-lg border px-4 py-3 text-left text-sm transition-all min-h-[44px]',
-              revealed && i === question.correct_option && 'border-emerald-500 bg-emerald-500/20 text-emerald-400',
+              revealed && i === question.correct_option && 'border-[var(--casino-teal)] bg-[var(--casino-teal)]/20 text-[var(--casino-teal)]',
               revealed && i === selectedOption && i !== question.correct_option && 'border-red-500 bg-red-500/20 text-red-400',
               !revealed && 'border-slate-600 bg-slate-700/50 text-slate-300 hover:border-slate-500',
               revealed && i !== selectedOption && i !== question.correct_option && 'opacity-50',

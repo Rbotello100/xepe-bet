@@ -64,6 +64,7 @@ CREATE TABLE profiles (
   credits NUMERIC(10,2) NOT NULL DEFAULT 1000.00,
   total_points INTEGER NOT NULL DEFAULT 0,
   is_admin BOOLEAN NOT NULL DEFAULT false,
+  terms_accepted_at TIMESTAMPTZ,
   created_at TIMESTAMPTZ DEFAULT now(),
   updated_at TIMESTAMPTZ DEFAULT now()
 );
@@ -366,91 +367,65 @@ INSERT INTO trivia_questions (question, options, correct_option, difficulty, cat
 -- =============================================
 -- SEED: Sample teams (Group A as example)
 -- =============================================
+-- 48 teams from the FIFA World Cup 2026 official draw (Dec 5, 2025)
 INSERT INTO teams (name, fifa_code, flag, group_name) VALUES
-('Canada', 'CAN', '🇨🇦', 'A'),
-('Argentina', 'ARG', '🇦🇷', 'A'),
-('Morocco', 'MAR', '🇲🇦', 'A'),
-('Uzbekistan', 'UZB', '🇺🇿', 'A'),
-('Mexico', 'MEX', '🇲🇽', 'B'),
-('Ecuador', 'ECU', '🇪🇨', 'B'),
-('Venezuela', 'VEN', '🇻🇪', 'B'),
-('Japan', 'JPN', '🇯🇵', 'B'),
-('United States', 'USA', '🇺🇸', 'C'),
-('Uruguay', 'URU', '🇺🇾', 'C'),
-('Panama', 'PAN', '🇵🇦', 'C'),
-('Bolivia', 'BOL', '🇧🇴', 'C'),
-('France', 'FRA', '🇫🇷', 'D'),
-('Colombia', 'COL', '🇨🇴', 'D'),
-('Saudi Arabia', 'KSA', '🇸🇦', 'D'),
+-- Group A
+('Mexico', 'MEX', '🇲🇽', 'A'),
+('South Korea', 'KOR', '🇰🇷', 'A'),
+('South Africa', 'RSA', '🇿🇦', 'A'),
+('Czech Republic', 'CZE', '🇨🇿', 'A'),
+-- Group B
+('Canada', 'CAN', '🇨🇦', 'B'),
+('Switzerland', 'SUI', '🇨🇭', 'B'),
+('Qatar', 'QAT', '🇶🇦', 'B'),
+('Bosnia Herzegovina', 'BIH', '🇧🇦', 'B'),
+-- Group C
+('Brazil', 'BRA', '🇧🇷', 'C'),
+('Morocco', 'MAR', '🇲🇦', 'C'),
+('Haiti', 'HAI', '🇭🇹', 'C'),
+('Scotland', 'SCO', '🏴󠁧󠁢󠁳󠁣󠁴󠁿', 'C'),
+-- Group D
+('United States', 'USA', '🇺🇸', 'D'),
+('Paraguay', 'PAR', '🇵🇾', 'D'),
 ('Australia', 'AUS', '🇦🇺', 'D'),
-('Brazil', 'BRA', '🇧🇷', 'E'),
-('Costa Rica', 'CRC', '🇨🇷', 'E'),
-('Albania', 'ALB', '🇦🇱', 'E'),
-('Turkiye', 'TUR', '🇹🇷', 'E'),
+('Turkiye', 'TUR', '🇹🇷', 'D'),
+-- Group E
+('Germany', 'GER', '🇩🇪', 'E'),
+('Ecuador', 'ECU', '🇪🇨', 'E'),
+('Cote d''Ivoire', 'CIV', '🇨🇮', 'E'),
+('Curacao', 'CUW', '🇨🇼', 'E'),
+-- Group F
 ('Netherlands', 'NED', '🇳🇱', 'F'),
-('Senegal', 'SEN', '🇸🇳', 'F'),
-('Iran', 'IRN', '🇮🇷', 'F'),
-('DR Congo', 'COD', '🇨🇩', 'F'),
-('Spain', 'ESP', '🇪🇸', 'G'),
-('Nigeria', 'NGA', '🇳🇬', 'G'),
+('Japan', 'JPN', '🇯🇵', 'F'),
+('Tunisia', 'TUN', '🇹🇳', 'F'),
+('Sweden', 'SWE', '🇸🇪', 'F'),
+-- Group G
+('Belgium', 'BEL', '🇧🇪', 'G'),
+('Egypt', 'EGY', '🇪🇬', 'G'),
+('Iran', 'IRN', '🇮🇷', 'G'),
 ('New Zealand', 'NZL', '🇳🇿', 'G'),
-('Czech Republic', 'CZE', '🇨🇿', 'G'),
-('England', 'ENG', '🏴󠁧󠁢󠁥󠁮󠁧󠁿', 'H'),
-('Serbia', 'SRB', '🇷🇸', 'H'),
-('Denmark', 'DEN', '🇩🇰', 'H'),
-('Paraguay', 'PAR', '🇵🇾', 'H'),
-('Portugal', 'POR', '🇵🇹', 'I'),
-('Cameroon', 'CMR', '🇨🇲', 'I'),
-('South Korea', 'KOR', '🇰🇷', 'I'),
-('Bosnia Herzegovina', 'BIH', '🇧🇦', 'I'),
-('Germany', 'GER', '🇩🇪', 'J'),
-('Chile', 'CHI', '🇨🇱', 'J'),
-('Iraq', 'IRQ', '🇮🇶', 'J'),
-('Sweden', 'SWE', '🇸🇪', 'J'),
-('Belgium', 'BEL', '🇧🇪', 'K'),
-('Wales', 'WAL', '🏴󠁧󠁢󠁷󠁬󠁳󠁿', 'K'),
-('Ghana', 'GHA', '🇬🇭', 'K'),
-('Peru', 'PER', '🇵🇪', 'K'),
+-- Group H
+('Spain', 'ESP', '🇪🇸', 'H'),
+('Uruguay', 'URU', '🇺🇾', 'H'),
+('Saudi Arabia', 'KSA', '🇸🇦', 'H'),
+('Cabo Verde', 'CPV', '🇨🇻', 'H'),
+-- Group I
+('France', 'FRA', '🇫🇷', 'I'),
+('Senegal', 'SEN', '🇸🇳', 'I'),
+('Norway', 'NOR', '🇳🇴', 'I'),
+('Iraq', 'IRQ', '🇮🇶', 'I'),
+-- Group J
+('Argentina', 'ARG', '🇦🇷', 'J'),
+('Austria', 'AUT', '🇦🇹', 'J'),
+('Algeria', 'ALG', '🇩🇿', 'J'),
+('Jordan', 'JOR', '🇯🇴', 'J'),
+-- Group K
+('Portugal', 'POR', '🇵🇹', 'K'),
+('Colombia', 'COL', '🇨🇴', 'K'),
+('Uzbekistan', 'UZB', '🇺🇿', 'K'),
+('DR Congo', 'COD', '🇨🇩', 'K'),
+-- Group L
+('England', 'ENG', '🏴󠁧󠁢󠁥󠁮󠁧󠁿', 'L'),
 ('Croatia', 'CRO', '🇭🇷', 'L'),
-('Switzerland', 'SUI', '🇨🇭', 'L'),
-('Egypt', 'EGY', '🇪🇬', 'L'),
-('Ukraine', 'UKR', '🇺🇦', 'L');
-
--- =============================================
--- SEED: Sample matches (Group A - first matchday)
--- =============================================
-INSERT INTO matches (home_team_id, away_team_id, group_name, round, starts_at, status)
-SELECT
-  t1.id, t2.id, 'A', 'group', '2026-06-11 18:00:00+00', 'scheduled'
-FROM teams t1, teams t2
-WHERE t1.fifa_code = 'CAN' AND t2.fifa_code = 'MAR';
-
-INSERT INTO matches (home_team_id, away_team_id, group_name, round, starts_at, status)
-SELECT
-  t1.id, t2.id, 'A', 'group', '2026-06-12 21:00:00+00', 'scheduled'
-FROM teams t1, teams t2
-WHERE t1.fifa_code = 'ARG' AND t2.fifa_code = 'UZB';
-
-INSERT INTO matches (home_team_id, away_team_id, group_name, round, starts_at, status)
-SELECT
-  t1.id, t2.id, 'B', 'group', '2026-06-11 21:00:00+00', 'scheduled'
-FROM teams t1, teams t2
-WHERE t1.fifa_code = 'MEX' AND t2.fifa_code = 'VEN';
-
-INSERT INTO matches (home_team_id, away_team_id, group_name, round, starts_at, status)
-SELECT
-  t1.id, t2.id, 'B', 'group', '2026-06-12 18:00:00+00', 'scheduled'
-FROM teams t1, teams t2
-WHERE t1.fifa_code = 'ECU' AND t2.fifa_code = 'JPN';
-
-INSERT INTO matches (home_team_id, away_team_id, group_name, round, starts_at, status)
-SELECT
-  t1.id, t2.id, 'C', 'group', '2026-06-12 00:00:00+00', 'scheduled'
-FROM teams t1, teams t2
-WHERE t1.fifa_code = 'USA' AND t2.fifa_code = 'BOL';
-
-INSERT INTO matches (home_team_id, away_team_id, group_name, round, starts_at, status)
-SELECT
-  t1.id, t2.id, 'C', 'group', '2026-06-13 00:00:00+00', 'scheduled'
-FROM teams t1, teams t2
-WHERE t1.fifa_code = 'URU' AND t2.fifa_code = 'PAN';
+('Ghana', 'GHA', '🇬🇭', 'L'),
+('Panama', 'PAN', '🇵🇦', 'L');

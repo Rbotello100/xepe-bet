@@ -22,4 +22,4 @@ components/
 
 ## Dark Theme
 
-Palette: slate-900 background, slate-800 cards, emerald-500 accent, slate-400 text secundario.
+Palette (FIFA World Cup 2026): slate-900 background, slate-800 cards, casino-red (#E8003D) primary accent, casino-yellow (#F5C400) highlights, casino-teal (#00A499) success, slate-400 text secundario.

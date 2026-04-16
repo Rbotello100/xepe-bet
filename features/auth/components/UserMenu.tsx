@@ -13,7 +13,7 @@ export function UserMenu({ profile }: UserMenuProps) {
     <div className="flex items-center gap-3">
       <div className="text-right">
         <p className="text-sm font-medium text-white">{profile.display_name}</p>
-        <p className="text-xs text-emerald-400">{profile.total_points} pts | ${profile.credits}</p>
+        <p className="text-xs text-[var(--casino-yellow)]">{profile.total_points} pts | ${profile.credits}</p>
       </div>
       <div className="h-9 w-9 rounded-full bg-slate-700 overflow-hidden">
         {profile.avatar_url ? (

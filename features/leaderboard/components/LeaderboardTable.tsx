@@ -27,7 +27,7 @@ export function LeaderboardTable({ entries, currentUserId }: LeaderboardTablePro
             key={entry.id}
             className={`flex items-center gap-3 rounded-xl px-4 py-3 ${
               isCurrentUser
-                ? 'border border-emerald-500/50 bg-emerald-500/10'
+                ? 'border border-[var(--accent)]/60 bg-[var(--accent)]/10 shadow-[0_0_15px_rgba(0,230,118,0.15)]'
                 : 'border border-slate-700 bg-slate-800'
             }`}
           >
@@ -50,8 +50,8 @@ export function LeaderboardTable({ entries, currentUserId }: LeaderboardTablePro
             </div>
 
             <div className="text-right">
-              <p className="text-sm font-bold text-emerald-400">{entry.total_points} pts</p>
-              <p className="text-xs text-slate-500">${entry.credits}</p>
+              <p className="text-sm font-black text-[var(--accent)]">${entry.credits.toLocaleString('es-CL')}</p>
+              <p className="text-xs text-slate-500">{entry.total_points} pts</p>
             </div>
           </div>
         )

@@ -40,7 +40,7 @@ export function ScoringConfigForm({ config }: ScoringConfigFormProps) {
         </Button>
       </form>
       {state?.error && <p className="text-xs text-red-400">{state.error}</p>}
-      {state?.success && <p className="text-xs text-emerald-400">Configuracion guardada</p>}
+      {state?.success && <p className="text-xs text-[var(--casino-teal)]">Configuracion guardada</p>}
     </Card>
   )
 }

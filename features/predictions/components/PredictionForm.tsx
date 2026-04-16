@@ -43,7 +43,7 @@ export function PredictionForm({ match, existingPrediction, locked }: Prediction
       <Card className="text-center text-slate-500 text-sm py-6">
         Predicciones cerradas para este partido
         {existingPrediction && (
-          <p className="mt-2 text-emerald-400">
+          <p className="mt-2 text-[var(--casino-yellow)]">
             Tu prediccion: {existingPrediction.predicted_winner}
             {existingPrediction.predicted_home_score != null && (
               <> ({existingPrediction.predicted_home_score}-{existingPrediction.predicted_away_score})</>
@@ -67,7 +67,7 @@ export function PredictionForm({ match, existingPrediction, locked }: Prediction
             className={clsx(
               'flex-1 rounded-lg border px-3 py-3 text-center transition-all min-h-[44px]',
               selectedWinner === pick
-                ? 'border-emerald-500 bg-emerald-500/20 text-emerald-400'
+                ? 'border-[var(--casino-red)] bg-[var(--casino-red)]/20 text-[var(--casino-yellow)]'
                 : 'border-slate-600 bg-slate-700/50 text-slate-400 hover:border-slate-500'
             )}
           >
@@ -106,8 +106,8 @@ export function PredictionForm({ match, existingPrediction, locked }: Prediction
         </Button>
       </form>
 
-      {state?.error && <p className="text-sm text-red-400">{state.error}</p>}
-      {state?.success && <p className="text-sm text-emerald-400">Prediccion guardada</p>}
+      {state && 'error' in state && state.error && <p className="text-sm text-red-400">{state.error}</p>}
+      {state && 'success' in state && state.success && <p className="text-sm text-[var(--casino-teal)]">Prediccion guardada</p>}
     </Card>
   )
 }

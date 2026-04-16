@@ -57,7 +57,7 @@ export function TriviaManager() {
             name="correct"
             checked={correctOption === i}
             onChange={() => setCorrectOption(i)}
-            className="accent-emerald-500"
+            className="accent-[var(--casino-red)]"
           />
           <Input
             value={opt}
@@ -73,7 +73,7 @@ export function TriviaManager() {
         {saving ? 'Guardando...' : 'Agregar pregunta'}
       </Button>
 
-      {message && <p className="text-xs text-emerald-400">{message}</p>}
+      {message && <p className="text-xs text-[var(--casino-teal)]">{message}</p>}
     </Card>
   )
 }

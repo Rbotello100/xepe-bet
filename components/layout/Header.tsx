@@ -20,6 +20,7 @@ export function Header({ user }: HeaderProps) {
               <Link href="/predictions" className="hover:text-white transition-colors">Predicciones</Link>
               <Link href="/bets" className="hover:text-white transition-colors">Apuestas</Link>
               <Link href="/trivia" className="hover:text-white transition-colors">Trivia</Link>
+              <Link href="/casino" className="hover:text-white transition-colors">Casino</Link>
             </>
           )}
         </nav>
@@ -28,7 +29,7 @@ export function Header({ user }: HeaderProps) {
           {user ? (
             <div className="flex items-center gap-3 text-sm">
               <div className="text-right hidden sm:block">
-                <p className="text-emerald-400 font-semibold">{user.total_points} pts</p>
+                <p className="text-[var(--casino-yellow)] font-semibold">{user.total_points} pts</p>
                 <p className="text-slate-500 text-xs">${user.credits.toLocaleString()}</p>
               </div>
               <div className="h-8 w-8 rounded-full bg-slate-700 overflow-hidden">
@@ -44,7 +45,7 @@ export function Header({ user }: HeaderProps) {
           ) : (
             <Link
               href="/login"
-              className="rounded-lg bg-emerald-500 px-4 py-2 text-sm font-medium text-white hover:bg-emerald-600"
+              className="rounded-lg bg-[var(--casino-red)] px-4 py-2 text-sm font-medium text-white hover:bg-[var(--accent-hover)]"
             >
               Iniciar sesion
             </Link>

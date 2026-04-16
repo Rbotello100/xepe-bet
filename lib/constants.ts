@@ -7,12 +7,15 @@ export const MAX_BET = 500
 export const BET_LOCK_HOURS = 1        // bets close 1h before kickoff
 export const PREDICTION_LOCK_HOURS = 24 // predictions lock 24h before kickoff
 
-// --- API Sport Keys (swap for production) ---
-// Dev/testing: Premier League
-// Production: soccer_fifa_world_cup / league=1
-export const SPORT_KEY = process.env.NEXT_PUBLIC_SPORT_KEY ?? 'soccer_epl'
-export const FOOTBALL_LEAGUE_ID = parseInt(process.env.NEXT_PUBLIC_FOOTBALL_LEAGUE_ID ?? '39', 10) // 39=EPL, 1=World Cup
-export const FOOTBALL_SEASON = parseInt(process.env.NEXT_PUBLIC_FOOTBALL_SEASON ?? '2025', 10) // 2026 for World Cup
+// --- API Sport Keys ---
+// Production (default): FIFA World Cup 2026
+// To run against Premier League for dev/testing, override via env:
+//   NEXT_PUBLIC_SPORT_KEY=soccer_epl
+//   NEXT_PUBLIC_FOOTBALL_LEAGUE_ID=39
+//   NEXT_PUBLIC_FOOTBALL_SEASON=2025
+export const SPORT_KEY = process.env.NEXT_PUBLIC_SPORT_KEY ?? 'soccer_fifa_world_cup'
+export const FOOTBALL_LEAGUE_ID = parseInt(process.env.NEXT_PUBLIC_FOOTBALL_LEAGUE_ID ?? '1', 10) // 1=World Cup, 39=EPL
+export const FOOTBALL_SEASON = parseInt(process.env.NEXT_PUBLIC_FOOTBALL_SEASON ?? '2026', 10)
 
 // --- Scoring Defaults ---
 export const DEFAULT_SCORING = {
@@ -38,5 +41,10 @@ export const TRIVIA_REWARDS = {
 } as const
 
 // --- Sync Schedule ---
-export const ODDS_OPEN_HOURS_BEFORE = 3 // open odds 3h before match
-export const ODDS_SYNC_INTERVAL_MIN = 60 // sync every 60 min during window
+// Odds: 1 sola request por partido cuando faltan 24h. Quedan congeladas hasta el cierre (1h antes).
+export const ODDS_OPEN_HOURS_BEFORE = 24
+export const ODDS_MAX_SYNC_ATTEMPTS = 3
+
+// Scores: 1 sola request 130 min después del kickoff (cubre 90' + descuento + alargue + penales).
+export const SCORE_SYNC_DELAY_MIN = 130
+export const SCORE_MAX_SYNC_ATTEMPTS = 3

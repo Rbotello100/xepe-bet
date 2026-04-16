@@ -10,7 +10,7 @@ interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
 }
 
 const variantStyles: Record<Variant, string> = {
-  primary: 'bg-emerald-500 text-white hover:bg-emerald-600 active:bg-emerald-700',
+  primary: 'bg-[var(--accent)] text-slate-900 font-semibold hover:bg-[var(--accent-hover)] shadow-[0_0_20px_rgba(0,230,118,0.35)] hover:shadow-[0_0_30px_rgba(0,230,118,0.5)]',
   secondary: 'bg-slate-700 text-slate-200 hover:bg-slate-600',
   danger: 'bg-red-500 text-white hover:bg-red-600',
   ghost: 'text-slate-300 hover:bg-slate-800',
@@ -35,7 +35,7 @@ export function Button({
     <button
       className={clsx(
         'inline-flex items-center justify-center rounded-lg font-medium transition-colors',
-        'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500',
+        'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]',
         'disabled:opacity-50 disabled:pointer-events-none',
         variantStyles[variant],
         sizeStyles[size],

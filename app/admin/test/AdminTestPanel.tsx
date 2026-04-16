@@ -30,7 +30,7 @@ export function AdminTestPanel() {
     updateResult(name, { status: 'running' })
 
     try {
-      const res = await fetch('/api/cron/sync-odds', { method: 'POST' })
+      const res = await fetch('/api/admin/sync-odds', { method: 'POST' })
       const data = await res.json()
       updateResult(name, {
         status: data.error ? 'error' : 'success',
@@ -49,7 +49,7 @@ export function AdminTestPanel() {
     updateResult(name, { status: 'running' })
 
     try {
-      const res = await fetch('/api/cron/sync-scores', { method: 'POST' })
+      const res = await fetch('/api/admin/sync-scores', { method: 'POST' })
       const data = await res.json()
       updateResult(name, {
         status: data.error ? 'error' : 'success',
@@ -131,7 +131,7 @@ export function AdminTestPanel() {
   const STATUS_COLORS = {
     pending: 'text-slate-400',
     running: 'text-amber-400',
-    success: 'text-emerald-400',
+    success: 'text-[var(--casino-teal)]',
     error: 'text-red-400',
   }
 

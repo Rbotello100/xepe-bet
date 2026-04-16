@@ -32,6 +32,20 @@ export async function fetchLiveScores(): Promise<FootballFixture[]> {
   return json.response
 }
 
+/**
+ * Trae el detalle de un fixture específico por su ID externo.
+ * Usado por el sync de scores 130 min después del kickoff (1 request por partido).
+ */
+export async function fetchFixtureById(externalId: string): Promise<FootballFixture | null> {
+  const res = await fetch(
+    `${BASE_URL}/fixtures?id=${externalId}`,
+    { headers: getHeaders() }
+  )
+  if (!res.ok) throw new Error(`API-Football fixture error: ${res.status}`)
+  const json: FootballAPIResponse<FootballFixture> = await res.json()
+  return json.response[0] ?? null
+}
+
 export async function fetchStandings(
   leagueId = FOOTBALL_LEAGUE_ID,
   season = FOOTBALL_SEASON

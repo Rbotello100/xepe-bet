@@ -38,7 +38,8 @@ function PodiumPlace({ entry, rank, height }: { entry: LeaderboardEntry; rank: n
         )}
       </div>
       <p className="text-xs text-white font-medium truncate w-full text-center">{entry.display_name}</p>
-      <p className="text-sm font-bold text-emerald-400">{entry.total_points}</p>
+      <p className="text-sm font-black text-[var(--accent)]">${entry.credits.toLocaleString('es-CL')}</p>
+      <p className="text-[10px] text-slate-500">{entry.total_points} pts</p>
       <div className={`w-full ${height} rounded-t-lg bg-gradient-to-t border ${colors[rank as 1 | 2 | 3]} flex items-center justify-center`}>
         <span className="text-2xl">{medals[rank as 1 | 2 | 3]}</span>
       </div>

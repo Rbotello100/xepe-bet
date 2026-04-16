@@ -16,14 +16,17 @@ export function BetslipSidebar() {
   const [amount, setAmount] = useState('')
   const [submitting, setSubmitting] = useState(false)
 
-  // Poll localStorage for changes from other components
   useEffect(() => {
     const read = () => {
       try { setLegs(JSON.parse(localStorage.getItem(STORAGE_KEY) ?? '[]')) } catch { /* */ }
     }
     read()
-    const interval = setInterval(read, 500)
-    return () => clearInterval(interval)
+    window.addEventListener('storage', read)
+    window.addEventListener('parlay-updated', read)
+    return () => {
+      window.removeEventListener('storage', read)
+      window.removeEventListener('parlay-updated', read)
+    }
   }, [])
 
   const removeLeg = (matchId: string) => {
@@ -83,7 +86,7 @@ export function BetslipSidebar() {
             <div key={leg.matchId} className="flex items-start justify-between rounded-lg bg-slate-700/50 px-3 py-2">
               <div className="min-w-0 flex-1">
                 <p className="text-xs text-white truncate">{leg.matchLabel}</p>
-                <p className="text-xs text-slate-400">{leg.pickLabel} <span className="text-emerald-400">x{formatOdds(leg.odds)}</span></p>
+                <p className="text-xs text-slate-400">{leg.pickLabel} <span className="text-[var(--casino-yellow)]">x{formatOdds(leg.odds)}</span></p>
               </div>
               <button onClick={() => removeLeg(leg.matchId)} className="text-slate-500 hover:text-red-400 ml-2">&times;</button>
             </div>
@@ -93,7 +96,7 @@ export function BetslipSidebar() {
         <div className="border-t border-slate-700 pt-3 space-y-2">
           <div className="flex justify-between text-sm">
             <span className="text-slate-400">Odds total</span>
-            <span className="text-emerald-400 font-bold">x{formatOdds(totalOdds)}</span>
+            <span className="text-[var(--casino-yellow)] font-bold">x{formatOdds(totalOdds)}</span>
           </div>
 
           <input
@@ -103,13 +106,13 @@ export function BetslipSidebar() {
             value={amount}
             onChange={e => setAmount(e.target.value)}
             placeholder={`$${MIN_BET} - $${MAX_BET}`}
-            className="w-full rounded-lg border border-slate-600 bg-slate-700 px-3 py-2 text-sm text-white placeholder:text-slate-500 focus:border-emerald-500 focus:outline-none"
+            className="w-full rounded-lg border border-slate-600 bg-slate-700 px-3 py-2 text-sm text-white placeholder:text-slate-500 focus:border-[var(--casino-red)] focus:outline-none"
           />
 
           {numAmount > 0 && (
             <div className="flex justify-between text-xs">
               <span className="text-slate-400">Ganancia potencial</span>
-              <span className="text-emerald-400 font-semibold">{formatCredits(potentialPayout)}</span>
+              <span className="text-[var(--casino-yellow)] font-semibold">{formatCredits(potentialPayout)}</span>
             </div>
           )}
 

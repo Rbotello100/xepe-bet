@@ -107,7 +107,7 @@ export function MatchBetting({ match, locked, credits }: MatchBettingProps) {
             className={clsx(
               'whitespace-nowrap rounded-full px-3 py-1.5 text-xs font-medium transition-colors flex-shrink-0',
               activeTab === i
-                ? 'bg-emerald-500 text-white'
+                ? 'bg-[var(--casino-red)] text-white'
                 : 'bg-slate-700 text-slate-400 hover:text-white'
             )}
           >
@@ -129,14 +129,14 @@ export function MatchBetting({ match, locked, credits }: MatchBettingProps) {
               'rounded-lg border px-3 py-3 text-center transition-all min-h-[44px]',
               currentMarket.options.length <= 3 && 'flex-1',
               selectedPick === pick
-                ? 'border-emerald-500 bg-emerald-500/20'
+                ? 'border-[var(--casino-red)] bg-[var(--casino-red)]/20'
                 : 'border-slate-600 bg-slate-700/50 hover:border-slate-500'
             )}
           >
             <span className="block text-xs text-slate-400 truncate">{label}</span>
             <span className={clsx(
               'block text-sm font-semibold',
-              selectedPick === pick ? 'text-emerald-400' : 'text-slate-300'
+              selectedPick === pick ? 'text-[var(--casino-yellow)]' : 'text-slate-300'
             )}>
               x{formatOdds(odds)}
             </span>

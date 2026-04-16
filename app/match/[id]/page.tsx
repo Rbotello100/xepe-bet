@@ -82,15 +82,15 @@ export default async function MatchDetailPage({ params }: { params: Promise<{ id
             <div className="flex gap-2">
               <div className="flex-1 rounded-lg bg-slate-700/50 px-3 py-2 text-center">
                 <span className="block text-xs text-slate-400">Local</span>
-                <span className="block text-sm font-semibold text-emerald-400">{formatOdds(match.odds_home)}</span>
+                <span className="block text-sm font-semibold text-[var(--casino-yellow)]">{formatOdds(match.odds_home)}</span>
               </div>
               <div className="flex-1 rounded-lg bg-slate-700/50 px-3 py-2 text-center">
                 <span className="block text-xs text-slate-400">Empate</span>
-                <span className="block text-sm font-semibold text-emerald-400">{formatOdds(match.odds_draw)}</span>
+                <span className="block text-sm font-semibold text-[var(--casino-yellow)]">{formatOdds(match.odds_draw)}</span>
               </div>
               <div className="flex-1 rounded-lg bg-slate-700/50 px-3 py-2 text-center">
                 <span className="block text-xs text-slate-400">Visita</span>
-                <span className="block text-sm font-semibold text-emerald-400">{formatOdds(match.odds_away)}</span>
+                <span className="block text-sm font-semibold text-[var(--casino-yellow)]">{formatOdds(match.odds_away)}</span>
               </div>
             </div>
           )}
@@ -115,7 +115,7 @@ export default async function MatchDetailPage({ params }: { params: Promise<{ id
         ) : (
           <Card className="text-center py-6">
             <p className="text-slate-400">Inicia sesion para hacer predicciones y apuestas</p>
-            <a href="/login" className="inline-block mt-3 rounded-lg bg-emerald-500 px-6 py-2 text-sm font-medium text-white hover:bg-emerald-600">
+            <a href="/login" className="inline-block mt-3 rounded-lg bg-[var(--casino-red)] px-6 py-2 text-sm font-medium text-white hover:bg-[var(--accent-hover)]">
               Iniciar sesion
             </a>
           </Card>

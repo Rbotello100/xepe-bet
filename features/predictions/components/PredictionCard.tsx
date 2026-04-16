@@ -31,7 +31,7 @@ export function PredictionCard({ prediction, match }: PredictionCardProps) {
       <div className="flex items-center gap-3">
         <span className="text-white font-medium">{winnerLabel}</span>
         {hasScore && (
-          <span className="text-emerald-400 text-sm">
+          <span className="text-[var(--casino-yellow)] text-sm">
             ({prediction.predicted_home_score}-{prediction.predicted_away_score})
           </span>
         )}

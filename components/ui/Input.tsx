@@ -21,7 +21,7 @@ export function Input({ label, error, className, id, ...props }: InputProps) {
         className={clsx(
           'w-full rounded-lg border border-slate-600 bg-slate-700 px-3 py-2 text-sm text-slate-100',
           'placeholder:text-slate-500',
-          'focus:border-emerald-500 focus:outline-none focus:ring-1 focus:ring-emerald-500',
+          'focus:border-[var(--casino-red)] focus:outline-none focus:ring-1 focus:ring-[var(--casino-red)]',
           error && 'border-red-500',
           className
         )}

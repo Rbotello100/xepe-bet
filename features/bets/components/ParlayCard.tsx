@@ -38,7 +38,7 @@ export function ParlayCard({ parlay }: { parlay: ParlayWithLegs }) {
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-2">
           <Badge variant="info">Parlay</Badge>
-          <span className="text-sm font-semibold text-emerald-400">x{formatOdds(parlay.total_odds)}</span>
+          <span className="text-sm font-semibold text-[var(--casino-yellow)]">x{formatOdds(parlay.total_odds)}</span>
         </div>
         <Badge variant={status.variant}>{status.label}</Badge>
       </div>
@@ -54,7 +54,7 @@ export function ParlayCard({ parlay }: { parlay: ParlayWithLegs }) {
               <div className="flex items-center justify-between">
                 <span className="text-sm text-white">{formatPick(leg.pick)}</span>
                 <div className="flex items-center gap-2">
-                  <span className="text-xs text-emerald-400">x{formatOdds(leg.odds)}</span>
+                  <span className="text-xs text-[var(--casino-yellow)]">x{formatOdds(leg.odds)}</span>
                   {leg.status !== 'pending' && (
                     <Badge variant={leg.status === 'won' ? 'success' : 'danger'}>
                       {leg.status === 'won' ? 'OK' : 'X'}
@@ -69,7 +69,7 @@ export function ParlayCard({ parlay }: { parlay: ParlayWithLegs }) {
 
       <div className="flex items-center justify-between text-sm border-t border-slate-700 pt-2">
         <span className="text-slate-400">Apostado: {formatCredits(parlay.amount)}</span>
-        <span className="text-emerald-400 font-semibold">Potencial: {formatCredits(parlay.potential_payout)}</span>
+        <span className="text-[var(--casino-yellow)] font-semibold">Potencial: {formatCredits(parlay.potential_payout)}</span>
       </div>
     </Card>
   )

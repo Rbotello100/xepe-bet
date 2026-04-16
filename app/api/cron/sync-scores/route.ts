@@ -1,18 +1,20 @@
 import { NextResponse } from 'next/server'
-import { syncLiveScores } from '@/lib/sync/scores'
-import { hasLiveMatches } from '@/lib/sync/scheduler'
+import { syncFinishedScores } from '@/lib/sync/scores'
+import { verifyCronAuth } from '@/lib/auth/cron'
 
-export async function POST() {
+async function handler(request: Request) {
+  const unauthorized = verifyCronAuth(request)
+  if (unauthorized) return unauthorized
+
   try {
-    const live = await hasLiveMatches()
-    if (!live) {
-      return NextResponse.json({ skipped: true, reason: 'No live matches' })
-    }
-
-    const result = await syncLiveScores()
+    const result = await syncFinishedScores()
     return NextResponse.json(result)
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Unknown error'
     return NextResponse.json({ error: message }, { status: 500 })
   }
 }
+
+// Vercel Cron llega por GET; manual/curl puede usar POST
+export const GET = handler
+export const POST = handler

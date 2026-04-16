@@ -1,8 +1,10 @@
 'use server'
 
 import { createServerClient } from '@/lib/supabase/server'
+import { createAdminClient } from '@/lib/supabase/admin'
 import { revalidatePath } from 'next/cache'
 import { TRIVIA_REWARDS } from '@/lib/constants'
+import { addCredits } from '@/lib/credits'
 
 interface TriviaAnswer {
   question_id: string
@@ -16,16 +18,7 @@ export async function submitTrivia(answers: TriviaAnswer[]) {
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return { error: 'No autenticado' }
 
-  // Check already played today
-  const today = new Date().toISOString().split('T')[0]
-  const { count } = await supabase
-    .from('trivia_sessions')
-    .select('id', { count: 'exact', head: true })
-    .eq('user_id', user.id)
-    .gte('completed_at', `${today}T00:00:00`)
-    .lte('completed_at', `${today}T23:59:59`)
-
-  if ((count ?? 0) > 0) return { error: 'Ya jugaste la trivia hoy' }
+  const admin = createAdminClient()
 
   const totalQuestions = answers.length
   const correctAnswers = answers.filter(a => a.is_correct).length
@@ -36,8 +29,8 @@ export async function submitTrivia(answers: TriviaAnswer[]) {
     ? (TRIVIA_REWARDS[totalQuestions as keyof typeof TRIVIA_REWARDS] ?? 0)
     : 0
 
-  // Create session
-  const { data: session, error: sessionError } = await supabase
+  // Create session — el UNIQUE constraint (user_id, DATE(completed_at)) bloquea race conditions
+  const { data: session, error: sessionError } = await admin
     .from('trivia_sessions')
     .insert({
       user_id: user.id,
@@ -48,10 +41,14 @@ export async function submitTrivia(answers: TriviaAnswer[]) {
     .select('id')
     .single()
 
-  if (sessionError) return { error: 'Error al guardar trivia' }
+  if (sessionError) {
+    // Postgres error 23505 = unique_violation → ya jugó hoy
+    if (sessionError.code === '23505') return { error: 'Ya jugaste la trivia hoy' }
+    return { error: 'Error al guardar trivia' }
+  }
 
   // Save answers
-  await supabase.from('trivia_answers').insert(
+  await admin.from('trivia_answers').insert(
     answers.map(a => ({
       session_id: session.id,
       question_id: a.question_id,
@@ -61,16 +58,13 @@ export async function submitTrivia(answers: TriviaAnswer[]) {
     }))
   )
 
-  // Award credits if earned
+  // Award credits if earned (with audit trail)
   if (creditsEarned > 0) {
-    const { data: profile } = await supabase.from('profiles').select('credits').eq('id', user.id).single()
-    if (profile) {
-      await supabase.from('profiles').update({ credits: profile.credits + creditsEarned }).eq('id', user.id)
-    }
+    await addCredits(user.id, creditsEarned, 'trivia', `Trivia perfecta ${correctAnswers}/${totalQuestions}`)
   }
 
   // Activity feed
-  await supabase.from('activity_feed').insert({
+  await admin.from('activity_feed').insert({
     user_id: user.id,
     action_type: 'trivia',
     description: allCorrect

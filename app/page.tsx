@@ -1,5 +1,6 @@
 import { Suspense } from 'react'
 import { Header } from '@/components/layout/Header'
+import { HeroBanner } from '@/components/layout/HeroBanner'
 import { MatchList } from '@/features/matches/components/MatchList'
 import { MatchCardSkeleton } from '@/components/ui/Skeleton'
 import { getOptionalAuth } from '@/lib/auth'
@@ -11,7 +12,11 @@ export default async function HomePage() {
     <>
       <Header user={auth?.profile ?? null} />
       <div className="mx-auto max-w-2xl px-4 py-6">
-        <h1 className="text-2xl font-bold text-white mb-6">Partidos</h1>
+        <HeroBanner />
+        <h2 className="text-lg font-semibold text-white mb-3 flex items-center gap-2">
+          <span className="inline-block w-1 h-5 bg-[var(--accent)] rounded-full" />
+          Próximos partidos
+        </h2>
         <Suspense fallback={<MatchListSkeleton />}>
           <MatchList />
         </Suspense>

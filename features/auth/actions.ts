@@ -22,3 +22,17 @@ export async function signOut() {
   await supabase.auth.signOut()
   redirect('/')
 }
+
+export async function acceptTerms() {
+  const supabase = await createServerClient()
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) redirect('/login')
+
+  const { error } = await supabase
+    .from('profiles')
+    .update({ terms_accepted_at: new Date().toISOString() })
+    .eq('id', user.id)
+
+  if (error) throw error
+  redirect('/')
+}

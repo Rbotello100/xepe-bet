@@ -1,37 +1,51 @@
-import { ODDS_OPEN_HOURS_BEFORE } from '@/lib/constants'
+import { ODDS_OPEN_HOURS_BEFORE, ODDS_MAX_SYNC_ATTEMPTS, SCORE_SYNC_DELAY_MIN, SCORE_MAX_SYNC_ATTEMPTS } from '@/lib/constants'
 import { createAdminClient } from '@/lib/supabase/admin'
 
 /**
- * Check if any matches are within the odds window (3h before kickoff).
- * Used by the cron job to decide whether to sync odds.
+ * Devuelve los partidos que necesitan sync de odds:
+ * - starts_at entre ahora y ahora+24h
+ * - aún no se sincearon (odds_synced = false)
+ * - status scheduled u open
+ * - menos de 3 intentos previos
  */
-export async function hasMatchesInOddsWindow(): Promise<boolean> {
+export async function getMatchesNeedingOdds(): Promise<{ id: string; external_id: string | null }[]> {
   const supabase = createAdminClient()
 
   const windowStart = new Date()
   const windowEnd = new Date()
   windowEnd.setHours(windowEnd.getHours() + ODDS_OPEN_HOURS_BEFORE)
 
-  const { count } = await supabase
+  const { data } = await supabase
     .from('matches')
-    .select('id', { count: 'exact', head: true })
+    .select('id, external_id')
+    .eq('odds_synced', false)
+    .lt('odds_sync_attempts', ODDS_MAX_SYNC_ATTEMPTS)
     .gte('starts_at', windowStart.toISOString())
     .lte('starts_at', windowEnd.toISOString())
     .in('status', ['scheduled', 'open'])
 
-  return (count ?? 0) > 0
+  return data ?? []
 }
 
 /**
- * Check if any matches are currently live.
+ * Devuelve los partidos que necesitan sync de score:
+ * - starts_at + 130 min ya pasó (debería estar terminado)
+ * - aún no se sincearon (score_synced = false)
+ * - menos de 3 intentos previos
  */
-export async function hasLiveMatches(): Promise<boolean> {
+export async function getMatchesNeedingScoreSync(): Promise<{ id: string; external_id: string | null }[]> {
   const supabase = createAdminClient()
 
-  const { count } = await supabase
-    .from('matches')
-    .select('id', { count: 'exact', head: true })
-    .eq('status', 'live')
+  const cutoff = new Date()
+  cutoff.setMinutes(cutoff.getMinutes() - SCORE_SYNC_DELAY_MIN)
 
-  return (count ?? 0) > 0
+  const { data } = await supabase
+    .from('matches')
+    .select('id, external_id')
+    .eq('score_synced', false)
+    .lt('score_sync_attempts', SCORE_MAX_SYNC_ATTEMPTS)
+    .lte('starts_at', cutoff.toISOString())
+    .neq('status', 'finished')
+
+  return data ?? []
 }

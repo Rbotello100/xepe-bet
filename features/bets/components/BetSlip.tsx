@@ -44,7 +44,7 @@ export function BetSlip({ match, pick, odds, onClose }: BetSlipProps) {
   )
 
   return (
-    <Card className="space-y-4 border-emerald-500/50">
+    <Card className="space-y-4 border-[var(--casino-red)]/50">
       <div className="flex items-center justify-between">
         <p className="text-sm font-medium text-white">Apostar</p>
         <button onClick={onClose} className="text-slate-500 hover:text-white text-lg">&times;</button>
@@ -52,7 +52,7 @@ export function BetSlip({ match, pick, odds, onClose }: BetSlipProps) {
 
       <div className="text-center">
         <p className="text-sm text-slate-400">{pickLabel}</p>
-        <p className="text-2xl font-bold text-emerald-400">x{formatOdds(odds)}</p>
+        <p className="text-2xl font-bold text-[var(--casino-yellow)]">x{formatOdds(odds)}</p>
       </div>
 
       <div className="flex gap-2">
@@ -61,7 +61,7 @@ export function BetSlip({ match, pick, odds, onClose }: BetSlipProps) {
             key={q}
             type="button"
             onClick={() => setAmount(q.toString())}
-            className="flex-1 rounded-lg border border-slate-600 py-1.5 text-xs text-slate-300 hover:border-emerald-500 transition-colors"
+            className="flex-1 rounded-lg border border-slate-600 py-1.5 text-xs text-slate-300 hover:border-[var(--casino-red)] transition-colors"
           >
             ${q}
           </button>
@@ -76,14 +76,14 @@ export function BetSlip({ match, pick, odds, onClose }: BetSlipProps) {
           value={amount}
           onChange={e => setAmount(e.target.value)}
           placeholder={`Monto ($${MIN_BET}-$${MAX_BET})`}
-          className="w-full rounded-lg border border-slate-600 bg-slate-700 px-3 py-2.5 text-sm text-white placeholder:text-slate-500 focus:border-emerald-500 focus:outline-none"
+          className="w-full rounded-lg border border-slate-600 bg-slate-700 px-3 py-2.5 text-sm text-white placeholder:text-slate-500 focus:border-[var(--casino-red)] focus:outline-none"
         />
       </div>
 
       {numAmount > 0 && (
         <div className="flex justify-between text-sm">
           <span className="text-slate-400">Ganancia potencial</span>
-          <span className="text-emerald-400 font-semibold">{formatCredits(potentialPayout)}</span>
+          <span className="text-[var(--casino-yellow)] font-semibold">{formatCredits(potentialPayout)}</span>
         </div>
       )}
 
@@ -99,7 +99,7 @@ export function BetSlip({ match, pick, odds, onClose }: BetSlipProps) {
       </form>
 
       {state?.error && <p className="text-sm text-red-400 text-center">{state.error}</p>}
-      {state?.success && <p className="text-sm text-emerald-400 text-center">Apuesta realizada</p>}
+      {state?.success && <p className="text-sm text-[var(--casino-yellow)] text-center">Apuesta realizada</p>}
     </Card>
   )
 }

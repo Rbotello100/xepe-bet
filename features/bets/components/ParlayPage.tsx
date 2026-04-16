@@ -80,7 +80,7 @@ export function ParlayPage({ credits }: ParlayPageProps) {
         </div>
         <div className="flex justify-between text-sm">
           <span className="text-slate-400">Odds total</span>
-          <span className="text-emerald-400 font-bold text-lg">x{formatOdds(totalOdds)}</span>
+          <span className="text-[var(--casino-yellow)] font-bold text-lg">x{formatOdds(totalOdds)}</span>
         </div>
 
         <input
@@ -90,13 +90,13 @@ export function ParlayPage({ credits }: ParlayPageProps) {
           value={amount}
           onChange={e => setAmount(e.target.value)}
           placeholder={`Monto ($${MIN_BET}-$${MAX_BET})`}
-          className="w-full rounded-lg border border-slate-600 bg-slate-700 px-3 py-2.5 text-sm text-white placeholder:text-slate-500 focus:border-emerald-500 focus:outline-none"
+          className="w-full rounded-lg border border-slate-600 bg-slate-700 px-3 py-2.5 text-sm text-white placeholder:text-slate-500 focus:border-[var(--casino-red)] focus:outline-none"
         />
 
         {numAmount > 0 && (
           <div className="flex justify-between text-sm">
             <span className="text-slate-400">Ganancia potencial</span>
-            <span className="text-emerald-400 font-semibold">{formatCredits(potentialPayout)}</span>
+            <span className="text-[var(--casino-yellow)] font-semibold">{formatCredits(potentialPayout)}</span>
           </div>
         )}
 

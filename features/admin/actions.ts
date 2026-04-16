@@ -4,6 +4,7 @@ import { createServerClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { revalidatePath } from 'next/cache'
 import { syncMatchOdds } from '@/lib/sync/odds'
+import { addCredits } from '@/lib/credits'
 
 export async function resolveMatch(matchId: string, homeScore: number, awayScore: number) {
   const supabase = await createServerClient()
@@ -76,20 +77,7 @@ export async function resolveMatch(matchId: string, homeScore: number, awayScore
 
     if (betWon) {
       betsWon++
-      const { data: betProfile } = await admin.from('profiles').select('credits').eq('id', bet.user_id).single()
-      if (betProfile) {
-        const newBalance = betProfile.credits + bet.potential_payout
-        await admin.from('profiles').update({ credits: newBalance }).eq('id', bet.user_id)
-        // Log winning transaction
-        await admin.from('credit_transactions').insert({
-          user_id: bet.user_id,
-          amount: bet.potential_payout,
-          type: 'win',
-          balance_after: newBalance,
-          reference_id: bet.id,
-          description: `Gano apuesta ${bet.pick} x${bet.odds_at_placement}`,
-        })
-      }
+      await addCredits(bet.user_id, bet.potential_payout, 'win', `Gano apuesta ${bet.pick} x${bet.odds_at_placement}`, bet.id)
     } else {
       betsLost++
     }
@@ -119,20 +107,7 @@ export async function resolveMatch(matchId: string, homeScore: number, awayScore
         }).eq('id', parlay.id)
 
         if (allWon) {
-          // Pay out parlay winner
-          const { data: parlayProfile } = await admin.from('profiles').select('credits').eq('id', parlay.user_id).single()
-          if (parlayProfile) {
-            const newBalance = parlayProfile.credits + parlay.potential_payout
-            await admin.from('profiles').update({ credits: newBalance }).eq('id', parlay.user_id)
-            await admin.from('credit_transactions').insert({
-              user_id: parlay.user_id,
-              amount: parlay.potential_payout,
-              type: 'win',
-              balance_after: newBalance,
-              reference_id: parlay.id,
-              description: `Gano parlay ${allLegs?.length} legs x${parlay.total_odds}`,
-            })
-          }
+          await addCredits(parlay.user_id, parlay.potential_payout, 'win', `Gano parlay ${allLegs?.length} legs x${parlay.total_odds}`, parlay.id)
         }
         parlaysResolved++
       }

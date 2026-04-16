@@ -54,7 +54,7 @@ export function MatchResolver({ match }: MatchResolverProps) {
       </form>
 
       {state?.error && <p className="text-xs text-red-400">{state.error}</p>}
-      {state?.success && <p className="text-xs text-emerald-400">Partido resuelto</p>}
+      {state?.success && <p className="text-xs text-[var(--casino-teal)]">Partido resuelto</p>}
     </Card>
   )
 }

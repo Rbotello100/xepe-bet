@@ -18,7 +18,7 @@ export default async function DashboardPage() {
         <div className="grid grid-cols-3 gap-3">
           <Card className="text-center">
             <p className="text-xs text-slate-400">Puntos</p>
-            <p className="text-2xl font-bold text-emerald-400">{profile.total_points}</p>
+            <p className="text-2xl font-bold text-[var(--casino-yellow)]">{profile.total_points}</p>
           </Card>
           <Card className="text-center">
             <p className="text-xs text-slate-400">Creditos</p>
