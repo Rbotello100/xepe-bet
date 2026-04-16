@@ -30,17 +30,26 @@ export async function MatchList() {
     )
   }
 
-  // Group matches by group_name
-  const groups = [...new Set(matches.map(m => m.group_name).filter(Boolean))].sort()
+  // Group matches by group_name. 'X' is the demo group (Premier League),
+  // rendered first with a special label. Mundial groups A-L come after.
+  const allGroups = [...new Set(matches.map(m => m.group_name).filter(Boolean))] as string[]
+  const demoGroups = allGroups.filter(g => g === 'X')
+  const mundialGroups = allGroups.filter(g => g !== 'X').sort()
+  const groups = [...demoGroups, ...mundialGroups]
 
   return (
     <div className="space-y-6">
       {groups.map(group => {
         const groupMatches = matches.filter(m => m.group_name === group)
+        const isDemo = group === 'X'
         return (
           <div key={group}>
-            <h2 className="text-sm font-semibold text-slate-400 mb-2 uppercase tracking-wider">
-              Grupo {group}
+            <h2
+              className={`text-sm font-semibold mb-2 uppercase tracking-wider ${
+                isDemo ? 'text-[var(--casino-yellow)]' : 'text-slate-400'
+              }`}
+            >
+              {isDemo ? '⚽ Premier League (Demo)' : `Grupo ${group}`}
             </h2>
             <div className="space-y-2">
               {groupMatches.map(match => (
