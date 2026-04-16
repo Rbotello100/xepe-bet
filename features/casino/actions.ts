@@ -51,11 +51,11 @@ async function recordCasinoSession(
 // ==========================================================
 // SLOTS 3×3 — 3 paylines (RTP ~88%)
 // ==========================================================
-const SYMBOLS = ['s1', 's2', 's3', 's4', 's5']
-const WEIGHTS = [4, 8, 16, 27, 45]
+const SYMBOLS = ['s1', 's2', 's3', 's4', 's5', 's6']
+const WEIGHTS = [4, 8, 14, 24, 30, 20]
 
 const PAYOUTS: Record<string, number> = {
-  s1: 8000, s2: 1500, s3: 300, s4: 70, s5: 18,
+  s1: 8000, s2: 1500, s3: 300, s4: 70, s5: 18, s6: 10,
 }
 
 const WIN_LINES = [

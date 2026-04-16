@@ -6,13 +6,14 @@ import { Button } from '@/components/ui/Button'
 import { Card } from '@/components/ui/Card'
 import { clsx } from 'clsx'
 
-// Mapeo de símbolo → imagen. Usar placeholders hasta que lleguen las fotos reales.
+// Nombres ficticios aleatorios para los símbolos (caras del casino)
 const SYMBOL_LABELS: Record<string, string> = {
-  s1: 'CEO',
-  s2: 'CFO',
-  s3: 'CTO',
-  s4: 'COO',
-  s5: 'VP',
+  s1: 'El Crack',
+  s2: 'El Mago',
+  s3: 'La Bestia',
+  s4: 'El Tigre',
+  s5: 'El Pulpo',
+  s6: 'El Genio',
 }
 
 const SYMBOL_COLORS: Record<string, string> = {
@@ -21,14 +22,15 @@ const SYMBOL_COLORS: Record<string, string> = {
   s3: 'from-[var(--accent)] to-[#005C2E]',
   s4: 'from-[var(--casino-teal)] to-[#005A52]',
   s5: 'from-slate-600 to-slate-800',
+  s6: 'from-purple-600 to-purple-900',
 }
 
 const PAYOUTS: Record<string, number> = {
-  s1: 8000, s2: 1500, s3: 300, s4: 70, s5: 18,
+  s1: 8000, s2: 1500, s3: 300, s4: 70, s5: 18, s6: 10,
 }
 
 // Símbolos que se muestran durante el spin
-const ALL_SYMS = ['s1', 's2', 's3', 's4', 's5']
+const ALL_SYMS = ['s1', 's2', 's3', 's4', 's5', 's6']
 
 function SlotCell({
   symbol,
@@ -41,7 +43,7 @@ function SlotCell({
   landed: boolean
   isWin: boolean
 }) {
-  const hasImage = false // cambiar a true cuando lleguen las fotos
+  const hasImage = true
 
   return (
     <div
