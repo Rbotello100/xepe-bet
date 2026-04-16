@@ -3,7 +3,7 @@ import { createAdminClient } from '@/lib/supabase/admin'
 
 /**
  * Devuelve los partidos que necesitan sync de odds:
- * - starts_at entre ahora y ahora+24h
+ * - starts_at entre ahora y ahora + ODDS_OPEN_HOURS_BEFORE (default 5 dias)
  * - aún no se sincearon (odds_synced = false)
  * - status scheduled u open
  * - menos de 3 intentos previos

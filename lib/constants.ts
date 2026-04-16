@@ -41,8 +41,9 @@ export const TRIVIA_REWARDS = {
 } as const
 
 // --- Sync Schedule ---
-// Odds: 1 sola request por partido cuando faltan 24h. Quedan congeladas hasta el cierre (1h antes).
-export const ODDS_OPEN_HOURS_BEFORE = 24
+// Odds: 1 sola request por partido cuando faltan hasta 5 dias del kickoff.
+// Quedan congeladas hasta el cierre (BET_LOCK_HOURS = 1h antes).
+export const ODDS_OPEN_HOURS_BEFORE = 120 // 5 dias
 export const ODDS_MAX_SYNC_ATTEMPTS = 3
 
 // Scores: 1 sola request 130 min después del kickoff (cubre 90' + descuento + alargue + penales).
