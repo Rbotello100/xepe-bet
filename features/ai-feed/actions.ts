@@ -45,12 +45,39 @@ export async function generateDailyFeed(): Promise<{
       db.from('predictions').select('id', { count: 'exact', head: true }),
     ])
 
-    // 3) Top 3 usuarios por puntos
+    // 3) Top 5 usuarios por puntos (ranking)
     const { data: topUsers } = await db
       .from('profiles')
       .select('display_name, total_points, credits')
       .order('total_points', { ascending: false })
+      .limit(5)
+
+    // 4) Apuestas recientes con nombre del usuario y detalle del partido
+    const { data: recentBets } = await db
+      .from('bets')
+      .select('amount, pick, created_at, user:user_id(display_name), match:match_id(home:home_team_id(name), away:away_team_id(name))')
+      .order('created_at', { ascending: false })
+      .limit(8)
+
+    // 5) Top 3 apuestas grandes del dia (por monto)
+    const todayStart = new Date()
+    todayStart.setHours(0, 0, 0, 0)
+    const { data: bigBets } = await db
+      .from('bets')
+      .select('amount, pick, user:user_id(display_name), match:match_id(home:home_team_id(name), away:away_team_id(name))')
+      .gte('created_at', todayStart.toISOString())
+      .order('amount', { ascending: false })
       .limit(3)
+
+    // 6) Predicciones recientes (prode)
+    const { data: recentPreds } = await db
+      .from('predictions')
+      .select('predicted_winner, predicted_home_score, predicted_away_score, user:user_id(display_name), match:match_id(home:home_team_id(name), away:away_team_id(name))')
+      .order('created_at', { ascending: false })
+      .limit(5)
+
+    type UserRef = { display_name: string } | null
+    type MatchRef = { home: { name: string } | null; away: { name: string } | null } | null
 
     // Construir contexto para Claude
     const context = {
@@ -69,27 +96,62 @@ export async function generateDailyFeed(): Promise<{
         apuestas: betCount ?? 0,
         predicciones: predictionCount ?? 0,
       },
-      top_usuarios: (topUsers ?? []).map((u) => ({
+      ranking_top5: (topUsers ?? []).map((u, i) => ({
+        puesto: i + 1,
         nombre: u.display_name,
         puntos: u.total_points,
         creditos: Number(u.credits),
       })),
+      apuestas_recientes: (recentBets ?? []).map((b) => {
+        const user = b.user as unknown as UserRef
+        const match = b.match as unknown as MatchRef
+        return {
+          usuario: user?.display_name ?? 'Alguien',
+          monto: Number(b.amount),
+          pick: b.pick,
+          partido: match ? `${match.home?.name ?? '?'} vs ${match.away?.name ?? '?'}` : null,
+        }
+      }),
+      apuestas_grandes_hoy: (bigBets ?? []).map((b) => {
+        const user = b.user as unknown as UserRef
+        const match = b.match as unknown as MatchRef
+        return {
+          usuario: user?.display_name ?? 'Alguien',
+          monto: Number(b.amount),
+          pick: b.pick,
+          partido: match ? `${match.home?.name ?? '?'} vs ${match.away?.name ?? '?'}` : null,
+        }
+      }),
+      predicciones_recientes: (recentPreds ?? []).map((p) => {
+        const user = p.user as unknown as UserRef
+        const match = p.match as unknown as MatchRef
+        return {
+          usuario: user?.display_name ?? 'Alguien',
+          pronostico: `${p.predicted_home_score ?? '?'}-${p.predicted_away_score ?? '?'} (${p.predicted_winner ?? '?'})`,
+          partido: match ? `${match.home?.name ?? '?'} vs ${match.away?.name ?? '?'}` : null,
+        }
+      }),
     }
 
     const system = `Sos un relator deportivo apasionado narrando el Mundial 2026 para una plataforma interna de prode/apuestas virtuales llamada Mundial Betting. Escribis en espanol rioplatense, informal, con humor, sin exagerar el futbolismo.
 
-Genera exactamente 6 posts cortos (max 140 caracteres cada uno) mezclando estos tipos:
-- 2 de tipo "summary": resumen/contexto de los proximos partidos del Mundial
-- 2 de tipo "flash": frase flash tipo tweet, energia alta, como si narraras en vivo
-- 1 de tipo "analysis": analisis curioso de stats de la plataforma (usuarios activos, apuestas hechas, lider del ranking)
-- 1 de tipo "trivia": dato historico curioso del Mundial 2026 o de mundiales pasados
+IMPORTANTE: Usa los nombres reales de los usuarios del contexto cuando hables del ranking, de apuestas o predicciones. Ejemplo: "¡Juan Perez sigue firme primero con 1200 puntos!", "¿Sabias que Maria apostó $500 a Brasil vs Morocco?".
+
+Genera exactamente 6 posts cortos (max 140 caracteres cada uno) con esta distribucion:
+- 1 "summary": contexto de los proximos partidos del Mundial
+- 1 "flash": frase energica tipo tweet, como narrando en vivo
+- 2 "analysis": datos concretos del ranking Y de apuestas recientes (usa nombres reales del contexto). Ej: "Fulano lidera el ranking con X pts", "Mengana acaba de apostar $Y a Z"
+- 1 "analysis" tipo chisme: una apuesta grande o curiosa del dia con nombre y monto ("¡Pedro le metió $800 a Alemania!")
+- 1 "trivia": dato historico curioso del Mundial (sin mencionar usuarios)
+
+Si el contexto viene con pocas apuestas/usuarios (plataforma recien arrancada), igual genera los posts pero reemplaza los de tipo analysis con mensajes de bienvenida ("Recien arrancamos, todavia no hay apuestas") sin inventar nombres que no estan en el contexto.
 
 Responde ESTRICTAMENTE en formato JSON, sin markdown, sin explicacion, solo el array:
 [
   {"kind": "summary", "content": "..."},
-  {"kind": "summary", "content": "..."},
   {"kind": "flash", "content": "..."},
-  {"kind": "flash", "content": "..."},
+  {"kind": "analysis", "content": "..."},
+  {"kind": "analysis", "content": "..."},
   {"kind": "analysis", "content": "..."},
   {"kind": "trivia", "content": "..."}
 ]`
