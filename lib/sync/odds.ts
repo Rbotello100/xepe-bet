@@ -14,8 +14,10 @@ import { getMatchesNeedingOdds } from './scheduler'
  *    - Si NO lo encuentra → solo incrementa odds_sync_attempts (3 fallidos = se rinde)
  *
  * Resultado: 1 API call por cron run; cada partido sólo necesita 1 sync exitoso en su vida.
+ *
+ * @param sportKey override the default sport key (useful for demo imports like EPL)
  */
-export async function syncMatchOdds() {
+export async function syncMatchOdds(sportKey?: string) {
   const supabase = createAdminClient()
 
   // 1. ¿Hay partidos que necesitan sync?
@@ -25,7 +27,7 @@ export async function syncMatchOdds() {
   }
 
   // 2. 1 API call que trae todos los events
-  const { data: events, remaining } = await fetchOdds('h2h', 'eu')
+  const { data: events, remaining } = await fetchOdds('h2h', 'eu', sportKey)
 
   let synced = 0
   let notFound = 0

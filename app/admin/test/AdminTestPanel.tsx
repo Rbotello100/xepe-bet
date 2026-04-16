@@ -99,9 +99,9 @@ export function AdminTestPanel() {
     }
   }
 
-  // Test 5: Import live league
+  // Test 5: Import live league (default sport)
   const testImportLeague = async () => {
-    const name = 'Importar Liga Activa (EPL)'
+    const name = 'Importar Liga Activa'
     addResult(name)
     updateResult(name, { status: 'running' })
 
@@ -112,6 +112,43 @@ export function AdminTestPanel() {
         status: data.error ? 'error' : 'success',
         message: data.error ?? data.message,
         data,
+      })
+    } catch (e) {
+      updateResult(name, { status: 'error', message: (e as Error).message })
+    }
+  }
+
+  // Test 5b: One-click EPL demo (import + sync)
+  const testImportEplDemo = async () => {
+    const name = 'Demo EPL (import + sync odds)'
+    addResult(name)
+    updateResult(name, { status: 'running' })
+
+    try {
+      // Step 1: import EPL events as matches
+      const importRes = await fetch('/api/test/import-league?sport=soccer_epl', { method: 'POST' })
+      const importData = await importRes.json()
+      if (importData.error) {
+        updateResult(name, { status: 'error', message: `Import fallo: ${importData.error}`, data: importData })
+        return
+      }
+
+      // Step 2: sync odds for the freshly imported EPL matches
+      const syncRes = await fetch('/api/admin/sync-odds?sport=soccer_epl', { method: 'POST' })
+      const syncData = await syncRes.json()
+      if (syncData.error) {
+        updateResult(name, {
+          status: 'error',
+          message: `Imported ${importData.matches_created} pero sync fallo: ${syncData.error}`,
+          data: { importData, syncData },
+        })
+        return
+      }
+
+      updateResult(name, {
+        status: 'success',
+        message: `Importados ${importData.matches_created} partidos, odds sincronizadas: ${syncData.synced ?? 0}`,
+        data: { importData, syncData },
       })
     } catch (e) {
       updateResult(name, { status: 'error', message: (e as Error).message })
@@ -164,6 +201,9 @@ export function AdminTestPanel() {
         </Button>
         <Button variant="secondary" onClick={testImportLeague} disabled={running}>
           Importar Liga Activa
+        </Button>
+        <Button variant="primary" onClick={testImportEplDemo} disabled={running}>
+          Demo EPL (import + odds)
         </Button>
       </div>
 

@@ -11,9 +11,10 @@ function getApiKey(): string {
 
 export async function fetchOdds(
   markets = 'h2h',
-  regions = 'eu'
+  regions = 'eu',
+  sportKey: string = SPORT_KEY,
 ): Promise<{ data: OddsAPIEvent[]; remaining: number }> {
-  const url = `${BASE_URL}/sports/${SPORT_KEY}/odds?apiKey=${getApiKey()}&markets=${markets}&regions=${regions}&oddsFormat=decimal`
+  const url = `${BASE_URL}/sports/${sportKey}/odds?apiKey=${getApiKey()}&markets=${markets}&regions=${regions}&oddsFormat=decimal`
   const res = await fetch(url)
   if (!res.ok) throw new Error(`Odds API error: ${res.status}`)
 
@@ -23,9 +24,10 @@ export async function fetchOdds(
 }
 
 export async function fetchScores(
-  daysFrom?: number
+  daysFrom?: number,
+  sportKey: string = SPORT_KEY,
 ): Promise<{ data: OddsScoreEvent[]; remaining: number }> {
-  let url = `${BASE_URL}/sports/${SPORT_KEY}/scores?apiKey=${getApiKey()}&dateFormat=iso`
+  let url = `${BASE_URL}/sports/${sportKey}/scores?apiKey=${getApiKey()}&dateFormat=iso`
   if (daysFrom) url += `&daysFrom=${daysFrom}`
 
   const res = await fetch(url)
@@ -36,8 +38,8 @@ export async function fetchScores(
   return { data, remaining }
 }
 
-export async function fetchEvents(): Promise<OddsAPIEvent[]> {
-  const url = `${BASE_URL}/sports/${SPORT_KEY}/events?apiKey=${getApiKey()}&dateFormat=iso`
+export async function fetchEvents(sportKey: string = SPORT_KEY): Promise<OddsAPIEvent[]> {
+  const url = `${BASE_URL}/sports/${sportKey}/events?apiKey=${getApiKey()}&dateFormat=iso`
   const res = await fetch(url)
   if (!res.ok) throw new Error(`Events API error: ${res.status}`)
   return res.json()

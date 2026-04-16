@@ -3,18 +3,22 @@ import { createAdminClient } from '@/lib/supabase/admin'
 import { SPORT_KEY } from '@/lib/constants'
 
 /**
- * Imports events from The Odds API for the current sport key (EPL for testing).
+ * Imports events from The Odds API for a given sport key (?sport=soccer_epl).
  * Creates teams if they don't exist, creates matches with external_id.
  * After import, "Sync Odds" will populate real odds.
+ * Uses group 'T' for these demo matches so they don't mix with the Mundial groups A-L.
  */
-export async function POST() {
+export async function POST(request: Request) {
   try {
     const apiKey = process.env.THE_ODDS_API_KEY
     if (!apiKey) return NextResponse.json({ error: 'THE_ODDS_API_KEY not set' })
 
+    const url = new URL(request.url)
+    const sport = url.searchParams.get('sport') ?? SPORT_KEY
+
     // Fetch events (FREE endpoint)
     const res = await fetch(
-      `https://api.the-odds-api.com/v4/sports/${SPORT_KEY}/events?apiKey=${apiKey}&dateFormat=iso`
+      `https://api.the-odds-api.com/v4/sports/${sport}/events?apiKey=${apiKey}&dateFormat=iso`
     )
     if (!res.ok) return NextResponse.json({ error: `API error: ${res.status}` })
 
@@ -73,11 +77,11 @@ export async function POST() {
     }
 
     return NextResponse.json({
-      sport: SPORT_KEY,
+      sport,
       events_found: events.length,
       matches_created: matchesCreated,
       matches_skipped: matchesSkipped,
-      message: `Importados ${matchesCreated} partidos de ${SPORT_KEY}. Ahora usa "Sync Odds" para obtener odds reales.`,
+      message: `Importados ${matchesCreated} partidos de ${sport}. Ahora usa "Sync Odds" para obtener odds reales.`,
     })
   } catch (e) {
     return NextResponse.json({ error: (e as Error).message })
