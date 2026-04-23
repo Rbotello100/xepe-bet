@@ -42,9 +42,9 @@ export function AdminTestPanel() {
     }
   }
 
-  // Test 2: Sync Scores from API-Football
+  // Test 2: Sync Scores from The Odds API
   const testSyncScores = async () => {
-    const name = 'Sync Scores (API-Football)'
+    const name = 'Sync Scores (The Odds API)'
     addResult(name)
     updateResult(name, { status: 'running' })
 
@@ -80,26 +80,7 @@ export function AdminTestPanel() {
     }
   }
 
-  // Test 4: Check API-Football directly
-  const testFootballAPI = async () => {
-    const name = 'API-Football - Status'
-    addResult(name)
-    updateResult(name, { status: 'running' })
-
-    try {
-      const res = await fetch('/api/test/football-status')
-      const data = await res.json()
-      updateResult(name, {
-        status: data.error ? 'error' : 'success',
-        message: data.error ?? `Plan: ${data.plan}. Requests hoy: ${data.requestsToday}/${data.requestsLimit}`,
-        data,
-      })
-    } catch (e) {
-      updateResult(name, { status: 'error', message: (e as Error).message })
-    }
-  }
-
-  // Test 5: Import live league (default sport)
+  // Test 4: Import live league (default sport)
   const testImportLeague = async () => {
     const name = 'Importar Liga Activa'
     addResult(name)
@@ -159,7 +140,6 @@ export function AdminTestPanel() {
     setRunning(true)
     setResults([])
     await testOddsAPI()
-    await testFootballAPI()
     await testSyncOdds()
     await testSyncScores()
     setRunning(false)
@@ -189,9 +169,6 @@ export function AdminTestPanel() {
         </Button>
         <Button variant="secondary" onClick={testOddsAPI} disabled={running}>
           Test Odds API
-        </Button>
-        <Button variant="secondary" onClick={testFootballAPI} disabled={running}>
-          Test Football API
         </Button>
         <Button variant="secondary" onClick={testSyncOdds} disabled={running}>
           Sync Odds

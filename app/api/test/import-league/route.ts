@@ -70,6 +70,7 @@ export async function POST(request: Request) {
         starts_at: event.commence_time,
         status: 'scheduled',
         external_id: event.id,
+        sport_key: sport,
       })
 
       if (!error) matchesCreated++

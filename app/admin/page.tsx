@@ -6,7 +6,7 @@ import { createServerClient } from '@/lib/supabase/server'
 import { MatchResolver } from '@/features/admin/components/MatchResolver'
 import { ScoringConfigForm } from '@/features/admin/components/ScoringConfig'
 import { TriviaManager } from '@/features/admin/components/TriviaManager'
-import { syncOddsManual } from '@/features/admin/actions'
+import { syncOddsManual, syncScoresManual } from '@/features/admin/actions'
 import type { MatchWithTeams, ScoringConfig } from '@/lib/types'
 
 export default async function AdminPage() {
@@ -59,6 +59,16 @@ export default async function AdminPage() {
           <form action={async () => { 'use server'; await syncOddsManual() }}>
             <Button type="submit" variant="secondary">Sincronizar odds ahora</Button>
           </form>
+        </div>
+
+        <div>
+          <h2 className="text-lg font-semibold text-white mb-3">Sync Scores</h2>
+          <form action={async () => { 'use server'; await syncScoresManual() }}>
+            <Button type="submit" variant="secondary">Sincronizar scores ahora</Button>
+          </form>
+          <p className="text-xs text-slate-500 mt-2">
+            Trae resultados de The Odds API (hasta 3 dias atras) y paga bets/parlays/predictions automaticamente.
+          </p>
         </div>
 
         <div>

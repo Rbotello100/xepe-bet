@@ -1,4 +1,4 @@
-import { ODDS_OPEN_HOURS_BEFORE, ODDS_MAX_SYNC_ATTEMPTS, SCORE_SYNC_DELAY_MIN, SCORE_MAX_SYNC_ATTEMPTS } from '@/lib/constants'
+import { ODDS_OPEN_HOURS_BEFORE, ODDS_MAX_SYNC_ATTEMPTS, SCORE_SYNC_DELAY_MIN, SCORE_MAX_SYNC_ATTEMPTS, SCORE_SYNC_WINDOW_DAYS } from '@/lib/constants'
 import { createAdminClient } from '@/lib/supabase/admin'
 
 /**
@@ -29,22 +29,28 @@ export async function getMatchesNeedingOdds(): Promise<{ id: string; external_id
 
 /**
  * Devuelve los partidos que necesitan sync de score:
- * - starts_at + 130 min ya pasó (debería estar terminado)
- * - aún no se sincearon (score_synced = false)
- * - menos de 3 intentos previos
+ * - starts_at + SCORE_SYNC_DELAY_MIN ya paso (deberia estar terminado)
+ * - starts_at dentro de la ventana de SCORE_SYNC_WINDOW_DAYS (maximo que /scores devuelve)
+ * - aun no se sincearon (score_synced = false)
+ * - menos de SCORE_MAX_SYNC_ATTEMPTS intentos previos
+ * - trae sport_key para que el sync agrupe pending matches por sport antes de pegarle a /scores
  */
-export async function getMatchesNeedingScoreSync(): Promise<{ id: string; external_id: string | null }[]> {
+export async function getMatchesNeedingScoreSync(): Promise<{ id: string; external_id: string | null; sport_key: string }[]> {
   const supabase = createAdminClient()
 
   const cutoff = new Date()
   cutoff.setMinutes(cutoff.getMinutes() - SCORE_SYNC_DELAY_MIN)
 
+  const windowFloor = new Date()
+  windowFloor.setDate(windowFloor.getDate() - SCORE_SYNC_WINDOW_DAYS)
+
   const { data } = await supabase
     .from('matches')
-    .select('id, external_id')
+    .select('id, external_id, sport_key')
     .eq('score_synced', false)
     .lt('score_sync_attempts', SCORE_MAX_SYNC_ATTEMPTS)
     .lte('starts_at', cutoff.toISOString())
+    .gte('starts_at', windowFloor.toISOString())
     .neq('status', 'finished')
 
   return data ?? []

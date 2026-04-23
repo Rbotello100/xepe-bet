@@ -8,14 +8,10 @@ export const BET_LOCK_HOURS = 1        // bets close 1h before kickoff
 export const PREDICTION_LOCK_HOURS = 24 // predictions lock 24h before kickoff
 
 // --- API Sport Keys ---
-// Production (default): FIFA World Cup 2026
-// To run against Premier League for dev/testing, override via env:
-//   NEXT_PUBLIC_SPORT_KEY=soccer_epl
-//   NEXT_PUBLIC_FOOTBALL_LEAGUE_ID=39
-//   NEXT_PUBLIC_FOOTBALL_SEASON=2025
+// Default sport_key used when a match has no explicit value (e.g. seeded Mundial matches).
+// import-league route stores the real sport_key per match so the score sync can query
+// /scores per-sport automatically.
 export const SPORT_KEY = process.env.NEXT_PUBLIC_SPORT_KEY ?? 'soccer_fifa_world_cup'
-export const FOOTBALL_LEAGUE_ID = parseInt(process.env.NEXT_PUBLIC_FOOTBALL_LEAGUE_ID ?? '1', 10) // 1=World Cup, 39=EPL
-export const FOOTBALL_SEASON = parseInt(process.env.NEXT_PUBLIC_FOOTBALL_SEASON ?? '2026', 10)
 
 // --- Scoring Defaults ---
 export const DEFAULT_SCORING = {
@@ -46,6 +42,9 @@ export const TRIVIA_REWARDS = {
 export const ODDS_OPEN_HOURS_BEFORE = 120 // 5 dias
 export const ODDS_MAX_SYNC_ATTEMPTS = 3
 
-// Scores: 1 sola request 130 min después del kickoff (cubre 90' + descuento + alargue + penales).
+// Scores: cron corre cada 6h. /scores solo devuelve hasta 3 dias atras, asi que
+// esa es la ventana efectiva de sync automatico. Con 4 runs/dia x 3 dias = 12 intentos
+// antes de rendirse.
 export const SCORE_SYNC_DELAY_MIN = 130
-export const SCORE_MAX_SYNC_ATTEMPTS = 3
+export const SCORE_MAX_SYNC_ATTEMPTS = 12
+export const SCORE_SYNC_WINDOW_DAYS = 3

@@ -4,6 +4,7 @@ import { createServerClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { revalidatePath } from 'next/cache'
 import { syncMatchOdds } from '@/lib/sync/odds'
+import { syncFinishedScores } from '@/lib/sync/scores'
 import { addCredits } from '@/lib/credits'
 
 export async function resolveMatch(matchId: string, homeScore: number, awayScore: number) {
@@ -142,6 +143,23 @@ export async function syncOddsManual() {
 
   try {
     const result = await syncMatchOdds()
+    return result
+  } catch (e) {
+    return { error: (e as Error).message }
+  }
+}
+
+export async function syncScoresManual() {
+  const supabase = await createServerClient()
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) return { error: 'No autenticado' }
+
+  const { data: profile } = await supabase.from('profiles').select('is_admin').eq('id', user.id).single()
+  if (!profile?.is_admin) return { error: 'No autorizado' }
+
+  try {
+    const result = await syncFinishedScores()
+    revalidatePath('/admin')
     return result
   } catch (e) {
     return { error: (e as Error).message }

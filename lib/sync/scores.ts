@@ -1,16 +1,21 @@
-import { fetchFixtureById } from '@/lib/football-api/client'
+import { fetchScores } from '@/lib/odds-api/client'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { addCredits } from '@/lib/credits'
+import { SCORE_SYNC_WINDOW_DAYS } from '@/lib/constants'
 import { getMatchesNeedingScoreSync } from './scheduler'
+import type { OddsScoreEvent } from '@/lib/odds-api/types'
 
 /**
- * Sincroniza scores 1 sola vez por partido (130 min después del kickoff).
+ * Sincroniza scores 1 sola vez por partido contra The Odds API /scores.
  *
  * Flujo:
- * 1. Lee de la BD los matches que necesitan sync (kickoff + 130min ya pasó, no syncados, < 3 intentos)
- * 2. Para cada match, hace 1 request a API-Football por fixture específico
- * 3. Si el fixture está terminado (FT/AET/PEN), actualiza score + marca synced + dispara autoResolveMatch
- * 4. Si no está terminado o falta info, incrementa attempts (3 fallidos = se rinde)
+ * 1. Lee los matches pending (kickoff + delay ya pasó, < MAX_ATTEMPTS, dentro de ventana 3d).
+ * 2. Agrupa por sport_key y hace UNA llamada a /scores por sport (2 creditos c/u).
+ * 3. Para cada match pending busca event.id === match.external_id en la respuesta.
+ * 4. Si completed + scores: actualiza score, dispara autoResolveMatch (paga bets/parlays/predictions).
+ * 5. Si no: incrementa attempts hasta rendirse.
+ *
+ * Los IDs de /scores MATCHean con los de /events y /odds -- no hace falta lookup por otro lado.
  */
 export async function syncFinishedScores() {
   const admin = createAdminClient()
@@ -20,50 +25,60 @@ export async function syncFinishedScores() {
     return { skipped: true, reason: 'No matches pending score sync', synced: 0 }
   }
 
+  const bySport = new Map<string, typeof pending>()
+  for (const m of pending) {
+    const bucket = bySport.get(m.sport_key) ?? []
+    bucket.push(m)
+    bySport.set(m.sport_key, bucket)
+  }
+
+  const scoresMap = new Map<string, OddsScoreEvent>()
+  const apiErrors: { sport_key: string; error: string }[] = []
+  let apiRemaining: number | null = null
+
+  for (const [sportKey] of bySport) {
+    try {
+      const { data, remaining } = await fetchScores(SCORE_SYNC_WINDOW_DAYS, sportKey)
+      apiRemaining = remaining
+      for (const event of data) scoresMap.set(event.id, event)
+    } catch (err) {
+      apiErrors.push({ sport_key: sportKey, error: (err as Error).message })
+    }
+  }
+
   let synced = 0
   let stillPlaying = 0
   let notFound = 0
   let autoResolved = 0
+  let nameMismatch = 0
 
   for (const match of pending) {
     if (!match.external_id) {
-      await admin
-        .from('matches')
-        .update({ score_sync_attempts: 999 })
-        .eq('id', match.id)
+      await admin.from('matches').update({ score_sync_attempts: 999 }).eq('id', match.id)
       continue
     }
 
-    let fixture
-    try {
-      fixture = await fetchFixtureById(match.external_id)
-    } catch {
-      await incrementSyncAttempts(match.id)
-      continue
-    }
+    const event = scoresMap.get(match.external_id)
 
-    if (!fixture) {
+    if (!event) {
       await incrementSyncAttempts(match.id)
       notFound++
       continue
     }
 
-    const { goals, fixture: fix } = fixture
-    const isFinished = ['FT', 'AET', 'PEN'].includes(fix.status.short)
-
-    if (!isFinished) {
-      // El partido sigue jugándose o aún no empezó el live data — incrementar attempts
+    if (!event.completed || !event.scores) {
       await incrementSyncAttempts(match.id)
       stillPlaying++
       continue
     }
 
-    if (goals.home == null || goals.away == null) {
+    const parsed = parseScoresByTeamName(event)
+    if (!parsed) {
       await incrementSyncAttempts(match.id)
+      nameMismatch++
       continue
     }
 
-    // Detectar si el match estaba pending antes (para evitar double-resolve)
     const { data: existing } = await admin
       .from('matches')
       .select('status')
@@ -72,12 +87,11 @@ export async function syncFinishedScores() {
 
     const wasNotFinished = existing && existing.status !== 'finished'
 
-    // Actualizar match con score y marcar synced
     const { error } = await admin
       .from('matches')
       .update({
-        home_score: goals.home,
-        away_score: goals.away,
+        home_score: parsed.home,
+        away_score: parsed.away,
         status: 'finished',
         score_synced: true,
         updated_at: new Date().toISOString(),
@@ -87,14 +101,43 @@ export async function syncFinishedScores() {
     if (error) continue
     synced++
 
-    // Auto-resolve solo si no estaba ya finalizado (idempotente)
     if (wasNotFinished) {
-      await autoResolveMatch(match.id, goals.home, goals.away)
+      await autoResolveMatch(match.id, parsed.home, parsed.away)
       autoResolved++
     }
   }
 
-  return { pending: pending.length, synced, still_playing: stillPlaying, not_found: notFound, auto_resolved: autoResolved }
+  return {
+    pending: pending.length,
+    synced,
+    still_playing: stillPlaying,
+    not_found: notFound,
+    name_mismatch: nameMismatch,
+    auto_resolved: autoResolved,
+    sports_queried: Array.from(bySport.keys()),
+    api_remaining: apiRemaining,
+    api_errors: apiErrors.length ? apiErrors : undefined,
+  }
+}
+
+/**
+ * /scores no garantiza orden (home puede venir en scores[0] o scores[1]), asi que
+ * matcheamos por name contra event.home_team / away_team.
+ * Retorna null si no encuentra ambos scores (caller incrementa attempts, no resuelve).
+ */
+function parseScoresByTeamName(event: OddsScoreEvent): { home: number; away: number } | null {
+  if (!event.scores) return null
+
+  const home = event.scores.find(s => s.name === event.home_team)
+  const away = event.scores.find(s => s.name === event.away_team)
+
+  if (!home || !away) return null
+
+  const homeNum = parseInt(home.score, 10)
+  const awayNum = parseInt(away.score, 10)
+  if (Number.isNaN(homeNum) || Number.isNaN(awayNum)) return null
+
+  return { home: homeNum, away: awayNum }
 }
 
 async function incrementSyncAttempts(matchId: string) {
@@ -105,20 +148,18 @@ async function incrementSyncAttempts(matchId: string) {
 }
 
 /**
- * Resuelve automáticamente todas las predictions, bets y parlays de un partido finalizado.
- * Mismo flow que admin.resolveMatch — solo paga bets/legs con status='pending', así es idempotente.
+ * Resuelve automaticamente todas las predictions, bets y parlays de un partido finalizado.
+ * Mismo flow que admin.resolveMatch -- solo paga bets/legs con status='pending', asi es idempotente.
  */
 async function autoResolveMatch(matchId: string, homeScore: number, awayScore: number) {
   const admin = createAdminClient()
 
   const winner = homeScore > awayScore ? 'home' : homeScore < awayScore ? 'away' : 'draw'
 
-  // Scoring config
   const { data: config } = await admin.from('scoring_config').select('*').single()
   const correctWinnerPts = config?.correct_winner_points ?? 3
   const exactScorePts = config?.exact_score_points ?? 5
 
-  // Predictions
   const { data: predictions } = await admin.from('predictions').select('*').eq('match_id', matchId)
   for (const pred of predictions ?? []) {
     const isWinnerCorrect = pred.predicted_winner === winner
@@ -138,7 +179,6 @@ async function autoResolveMatch(matchId: string, homeScore: number, awayScore: n
     }
   }
 
-  // Bets
   const { data: bets } = await admin.from('bets').select('*').eq('match_id', matchId).eq('status', 'pending')
   for (const bet of bets ?? []) {
     const betWon = bet.pick === winner || bet.pick === (winner === 'home' ? '1' : winner === 'away' ? '2' : 'X')
@@ -146,14 +186,13 @@ async function autoResolveMatch(matchId: string, homeScore: number, awayScore: n
     await admin.from('bets').update({
       status: betWon ? 'won' : 'lost',
       resolved_at: new Date().toISOString(),
-    }).eq('id', bet.id).eq('status', 'pending') // guard: solo si sigue pending
+    }).eq('id', bet.id).eq('status', 'pending')
 
     if (betWon) {
       await addCredits(bet.user_id, bet.potential_payout, 'win', `Gano apuesta ${bet.pick} x${bet.odds_at_placement}`, bet.id)
     }
   }
 
-  // Parlay legs
   const { data: parlayLegs } = await admin.from('parlay_legs').select('*').eq('match_id', matchId).eq('status', 'pending')
   for (const leg of parlayLegs ?? []) {
     const legWon = leg.pick === winner || leg.pick === (winner === 'home' ? '1' : winner === 'away' ? '2' : 'X')
