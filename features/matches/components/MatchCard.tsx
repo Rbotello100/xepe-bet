@@ -4,6 +4,7 @@ import { Card } from '@/components/ui/Card'
 import { Badge } from '@/components/ui/Badge'
 import { formatDate, formatOdds } from '@/lib/utils/format'
 import { getMatchStatusLabel, getMatchStatusVariant } from '@/features/matches/types'
+import { BET_LOCK_HOURS } from '@/lib/constants'
 
 interface MatchCardProps {
   match: MatchWithTeams
@@ -13,6 +14,11 @@ export function MatchCard({ match }: MatchCardProps) {
   const statusVariant = getMatchStatusVariant(match.status)
   const statusLabel = getMatchStatusLabel(match.status)
   const isFinished = match.status === 'finished'
+
+  // Odds desaparecen cuando bets cierran (1h antes del kickoff por defecto).
+  const lockCutoff = new Date(new Date(match.starts_at).getTime() - BET_LOCK_HOURS * 60 * 60 * 1000)
+  const isLocked = new Date() >= lockCutoff
+  const showOdds = !isFinished && !isLocked && match.odds_home
 
   return (
     <Link href={`/match/${match.id}`}>
@@ -44,7 +50,7 @@ export function MatchCard({ match }: MatchCardProps) {
           </div>
         </div>
 
-        {!isFinished && match.odds_home && (
+        {showOdds && (
           <div className="flex gap-2">
             <div className="flex-1 rounded-lg border border-slate-600 bg-slate-700/50 px-3 py-2.5 text-center">
               <span className="block text-xs text-slate-400">1</span>
