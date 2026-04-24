@@ -7,6 +7,7 @@ const STATUS_MAP = {
   pending: { label: 'Pendiente', variant: 'warning' as const },
   won: { label: 'Ganado', variant: 'success' as const },
   lost: { label: 'Perdido', variant: 'danger' as const },
+  void: { label: 'Anulado (refund)', variant: 'default' as const },
 }
 
 const PICK_LABELS: Record<string, string> = {

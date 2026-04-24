@@ -142,14 +142,37 @@ export async function discoverAllSports(
   return Promise.all(sportKeys.map(key => discoverMatches(key, triggeredBy)))
 }
 
+/**
+ * Normaliza un nombre de equipo para comparación fuzzy:
+ * - lowercase
+ * - strip de acentos (Unicode NFD)
+ * - remueve todo lo que no sea alfanumérico (espacios, &, guiones, apóstrofes, etc.)
+ *
+ * Permite matchear "Bosnia & Herzegovina" ↔ "Bosnia Herzegovina" ↔ "bosniaherzegovina".
+ */
+function normalizeTeamName(name: string): string {
+  return name
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[̀-ͯ]/g, '')
+    .replace(/[^a-z0-9]/g, '')
+}
+
 async function resolveOrCreateTeam(name: string, sportKey: string): Promise<string | null> {
   const admin = createAdminClient()
 
-  // Exact match
+  // 1. Match exacto case-insensitive
   const { data: exact } = await admin.from('teams').select('id').ilike('name', name).maybeSingle()
   if (exact) return exact.id
 
-  // Si no existe, crear con fifa_code basado en nombre (mismo patrón que import-league)
+  // 2. Match fuzzy: normaliza ambos lados y compara.
+  //    Cubre "Bosnia & Herzegovina" vs "Bosnia Herzegovina", acentos, espacios, etc.
+  const needle = normalizeTeamName(name)
+  const { data: allTeams } = await admin.from('teams').select('id, name')
+  const fuzzyHit = (allTeams ?? []).find(t => normalizeTeamName(t.name) === needle)
+  if (fuzzyHit) return fuzzyHit.id
+
+  // 3. No hay team que matchee — crear uno nuevo con fifa_code sintético
   const fifaCode = sanitizeFifaCode(name)
   const { data: upserted, error } = await admin
     .from('teams')
