@@ -8,7 +8,7 @@ import { createAdminClient } from '@/lib/supabase/admin'
  * - status scheduled u open
  * - menos de 3 intentos previos
  */
-export async function getMatchesNeedingOdds(): Promise<{ id: string; external_id: string | null }[]> {
+export async function getMatchesNeedingOdds(): Promise<{ id: string; external_id: string | null; sport_key: string }[]> {
   const supabase = createAdminClient()
 
   const windowStart = new Date()
@@ -17,7 +17,7 @@ export async function getMatchesNeedingOdds(): Promise<{ id: string; external_id
 
   const { data } = await supabase
     .from('matches')
-    .select('id, external_id')
+    .select('id, external_id, sport_key')
     .eq('odds_synced', false)
     .lt('odds_sync_attempts', ODDS_MAX_SYNC_ATTEMPTS)
     .gte('starts_at', windowStart.toISOString())

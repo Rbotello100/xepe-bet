@@ -3,6 +3,7 @@ import { createAdminClient } from '@/lib/supabase/admin'
 import { addCredits } from '@/lib/credits'
 import { SCORE_SYNC_WINDOW_DAYS } from '@/lib/constants'
 import { getMatchesNeedingScoreSync } from './scheduler'
+import { logOddsApiUsage, type UsageTrigger } from '@/lib/odds-api/usage'
 import type { OddsScoreEvent } from '@/lib/odds-api/types'
 
 /**
@@ -17,7 +18,7 @@ import type { OddsScoreEvent } from '@/lib/odds-api/types'
  *
  * Los IDs de /scores MATCHean con los de /events y /odds -- no hace falta lookup por otro lado.
  */
-export async function syncFinishedScores() {
+export async function syncFinishedScores(triggeredBy: UsageTrigger = 'cron') {
   const admin = createAdminClient()
   const pending = await getMatchesNeedingScoreSync()
 
@@ -36,14 +37,30 @@ export async function syncFinishedScores() {
   const apiErrors: { sport_key: string; error: string }[] = []
   let apiRemaining: number | null = null
 
-  for (const [sportKey] of bySport) {
+  for (const [sportKey, matches] of bySport) {
+    let remaining: number | null = null
+    let errorMsg: string | null = null
+    let fetched = 0
     try {
-      const { data, remaining } = await fetchScores(SCORE_SYNC_WINDOW_DAYS, sportKey)
+      const res = await fetchScores(SCORE_SYNC_WINDOW_DAYS, sportKey)
+      remaining = res.remaining
       apiRemaining = remaining
-      for (const event of data) scoresMap.set(event.id, event)
+      fetched = res.data.length
+      for (const event of res.data) scoresMap.set(event.id, event)
     } catch (err) {
-      apiErrors.push({ sport_key: sportKey, error: (err as Error).message })
+      errorMsg = (err as Error).message
+      apiErrors.push({ sport_key: sportKey, error: errorMsg })
     }
+
+    await logOddsApiUsage({
+      endpoint: 'scores',
+      sport_key: sportKey,
+      credits_used: 2,
+      remaining,
+      triggered_by: triggeredBy,
+      result_summary: { pending_in_bucket: matches.length, events_fetched: fetched },
+      error: errorMsg,
+    })
   }
 
   let synced = 0
@@ -151,7 +168,7 @@ async function incrementSyncAttempts(matchId: string) {
  * Resuelve automaticamente todas las predictions, bets y parlays de un partido finalizado.
  * Mismo flow que admin.resolveMatch -- solo paga bets/legs con status='pending', asi es idempotente.
  */
-async function autoResolveMatch(matchId: string, homeScore: number, awayScore: number) {
+export async function autoResolveMatch(matchId: string, homeScore: number, awayScore: number) {
   const admin = createAdminClient()
 
   const winner = homeScore > awayScore ? 'home' : homeScore < awayScore ? 'away' : 'draw'
