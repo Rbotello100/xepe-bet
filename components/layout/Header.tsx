@@ -1,4 +1,5 @@
 import Link from 'next/link'
+import Image from 'next/image'
 
 interface HeaderProps {
   user?: { display_name: string; avatar_url: string | null; credits: number; total_points: number } | null
@@ -8,8 +9,15 @@ export function Header({ user }: HeaderProps) {
   return (
     <header className="sticky top-0 z-50 border-b border-slate-700 bg-slate-900/95 backdrop-blur">
       <div className="mx-auto flex h-14 max-w-4xl items-center justify-between px-4">
-        <Link href="/" className="flex items-center gap-2 font-bold text-lg text-white">
-          <span>Mundial 2026</span>
+        <Link href="/" className="flex items-center">
+          <Image
+            src="/xepebet-logo.png"
+            alt="Xepe Bet"
+            width={320}
+            height={180}
+            priority
+            className="h-10 w-auto rounded-md"
+          />
         </Link>
 
         <nav className="hidden md:flex items-center gap-6 text-sm text-slate-400">
