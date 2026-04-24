@@ -4,14 +4,6 @@ import { createServerClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { revalidatePath } from 'next/cache'
 import { deductCredits, addCredits } from '@/lib/credits'
-import { MIN_BET, MAX_BET } from '@/lib/constants'
-
-// Honeytrap: si alguien intenta explotar el endpoint mandando bet <= 0 o fuera
-// del rango valido, se le cobran 50 creditos de "penalty" y se postea en el feed
-// para que el resto de los users vean el intento. Los tests legitimos del front
-// nunca mandan valores fuera de [MIN_BET, MAX_BET], asi que esto solo atrapa
-// scripts o manipulacion manual del request.
-const CHEAT_PENALTY = 50
 
 async function getAuthUser() {
   const supabase = await createServerClient()
@@ -100,27 +92,6 @@ function checkWinLines(grid: string[]): { winLine: number[]; symbol: string; pay
 export async function playSlots(bet: number) {
   const user = await getAuthUser()
   if (!user) return { error: 'No autenticado' }
-
-  // Honeytrap: intento de bypass (bet=0, negativo, NaN o fuera de rango)
-  if (!Number.isFinite(bet) || bet < MIN_BET || bet > MAX_BET) {
-    const admin = db()
-    await deductCredits(
-      user.id,
-      CHEAT_PENALTY,
-      'casino_bet',
-      `Intento de explotar slots con bet invalido ($${bet}) — penalty $${CHEAT_PENALTY}`,
-    )
-    await admin.from('activity_feed').insert({
-      user_id: user.id,
-      action_type: 'achievement',
-      description: `intento romper las slots apostando $${bet} y perdio $${CHEAT_PENALTY} de multa`,
-      metadata: { game: 'slots', cheat_attempt: true, attempted_bet: bet, penalty: CHEAT_PENALTY },
-    })
-    return {
-      error: `Apuesta minima $${MIN_BET}. Te cobramos $${CHEAT_PENALTY} por el intento. La proxima lee las reglas.`,
-      penalty: CHEAT_PENALTY,
-    }
-  }
 
   const free = await canPlayToday(user.id, 'slots')
   const cost = free ? 0 : bet
