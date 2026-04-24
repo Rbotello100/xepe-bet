@@ -42,9 +42,10 @@ export const TRIVIA_REWARDS = {
 export const ODDS_OPEN_HOURS_BEFORE = 120 // 5 dias
 export const ODDS_MAX_SYNC_ATTEMPTS = 3
 
-// Scores: cron corre cada 6h. /scores solo devuelve hasta 3 dias atras, asi que
-// esa es la ventana efectiva de sync automatico. Con 4 runs/dia x 3 dias = 12 intentos
-// antes de rendirse.
+// Scores: Vercel Hobby permite cron 1x/dia. /scores solo devuelve hasta 3 dias atras,
+// asi que un match tiene ~3 oportunidades de ser capturado automaticamente antes de
+// salir de ventana. 5 intentos deja margen si algun run falla por transient errors.
+// Para correr mas frecuente habria que upgrade a Vercel Pro + mas creditos Odds API.
 export const SCORE_SYNC_DELAY_MIN = 130
-export const SCORE_MAX_SYNC_ATTEMPTS = 12
+export const SCORE_MAX_SYNC_ATTEMPTS = 5
 export const SCORE_SYNC_WINDOW_DAYS = 3
