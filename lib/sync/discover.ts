@@ -168,23 +168,44 @@ async function resolveOrCreateTeam(name: string, sportKey: string): Promise<stri
   // 2. Match fuzzy: normaliza ambos lados y compara.
   //    Cubre "Bosnia & Herzegovina" vs "Bosnia Herzegovina", acentos, espacios, etc.
   const needle = normalizeTeamName(name)
-  const { data: allTeams } = await admin.from('teams').select('id, name')
+  const { data: allTeams } = await admin.from('teams').select('id, name, fifa_code')
   const fuzzyHit = (allTeams ?? []).find(t => normalizeTeamName(t.name) === needle)
   if (fuzzyHit) return fuzzyHit.id
 
-  // 3. No hay team que matchee — crear uno nuevo con fifa_code sintético
-  const fifaCode = sanitizeFifaCode(name)
-  const { data: upserted, error } = await admin
+  // 3. No hay team que matchee — crear uno nuevo con fifa_code garantizado único.
+  //    IMPORTANTE: NO usamos upsert con onConflict='fifa_code' porque dos teams
+  //    distintos ("New Zealand" y "Newcastle United") pueden derivar al mismo
+  //    fifa_code truncado, y el upsert terminaría pisando el name del existente.
+  const usedCodes = new Set((allTeams ?? []).map(t => t.fifa_code))
+  const fifaCode = allocateUniqueFifaCode(name, usedCodes)
+
+  const { data: inserted, error } = await admin
     .from('teams')
-    .upsert({ name, fifa_code: fifaCode, flag: '⚽', group_name: sportKey === 'soccer_fifa_world_cup' ? 'X' : 'T' }, { onConflict: 'fifa_code' })
+    .insert({ name, fifa_code: fifaCode, flag: '⚽', group_name: sportKey === 'soccer_fifa_world_cup' ? 'X' : 'T' })
     .select('id')
     .single()
 
-  if (error || !upserted) {
-    console.warn(`[discover] failed to upsert team ${name}:`, error?.message)
+  if (error || !inserted) {
+    console.warn(`[discover] failed to insert team ${name}:`, error?.message)
     return null
   }
-  return upserted.id
+  return inserted.id
+}
+
+/**
+ * Genera un fifa_code único: primero intenta los 3 primeros chars del name,
+ * y si está tomado, agrega un sufijo numérico (NEW → NE2 → NE3 ...).
+ */
+function allocateUniqueFifaCode(name: string, usedCodes: Set<string>): string {
+  const base = sanitizeFifaCode(name)
+  if (!usedCodes.has(base)) return base
+
+  const prefix = base.substring(0, 2)
+  for (let i = 2; i < 100; i++) {
+    const candidate = `${prefix}${i}`
+    if (!usedCodes.has(candidate)) return candidate
+  }
+  return `X${Math.floor(Math.random() * 99).toString().padStart(2, '0')}`
 }
 
 function sanitizeFifaCode(name: string): string {
