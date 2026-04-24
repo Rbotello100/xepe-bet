@@ -18,8 +18,8 @@ const geistMono = Geist_Mono({
 })
 
 export const metadata: Metadata = {
-  title: 'Mundial 2026 | Prode & Apuestas',
-  description: 'Predice resultados, apuesta con creditos y compite en el ranking del Mundial 2026',
+  title: 'Xepe Bet | Prode & Apuestas Mundial 2026',
+  description: 'Xepe Bet: predice resultados del Mundial 2026, apuesta con creditos virtuales y compite en el ranking.',
 }
 
 export const viewport = {

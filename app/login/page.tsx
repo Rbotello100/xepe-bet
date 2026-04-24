@@ -13,8 +13,8 @@ export default async function LoginPage() {
       <Card className="w-full max-w-sm space-y-6 text-center">
         <div className="space-y-2">
           <p className="text-4xl">⚽</p>
-          <h1 className="text-2xl font-bold text-white">Mundial 2026</h1>
-          <p className="text-sm text-slate-400">Prode & Apuestas</p>
+          <h1 className="text-2xl font-bold text-white">Xepe Bet</h1>
+          <p className="text-sm text-slate-400">Prode & Apuestas · Mundial 2026</p>
         </div>
 
         <p className="text-xs text-slate-500">
