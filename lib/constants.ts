@@ -47,7 +47,10 @@ export const TRIVIA_REWARDS = {
 // Odds: 1 sola request por partido cuando faltan hasta 5 dias del kickoff.
 // Quedan congeladas hasta el cierre (BET_LOCK_HOURS = 1h antes).
 export const ODDS_OPEN_HOURS_BEFORE = 120 // 5 dias
-export const ODDS_MAX_SYNC_ATTEMPTS = 3
+// Max 10 intentos (= 10 dias de crons diarios) para cubrir casos donde el match
+// entra en ventana pero la API aun no publico odds (a veces hasta 2 dias antes del kickoff).
+// Con 3 era muy bajo y los matches abandonaban antes de que la API los tuviera.
+export const ODDS_MAX_SYNC_ATTEMPTS = 10
 
 // Scores: Vercel Hobby permite cron 1x/dia. /scores solo devuelve hasta 3 dias atras,
 // asi que un match tiene ~3 oportunidades de ser capturado automaticamente antes de
