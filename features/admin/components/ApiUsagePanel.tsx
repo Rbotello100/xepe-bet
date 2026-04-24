@@ -3,7 +3,7 @@
 import { useState, useTransition } from 'react'
 import { Card } from '@/components/ui/Card'
 import { Button } from '@/components/ui/Button'
-import { syncOddsManual, syncScoresManual, getOddsApiUsage, type ApiUsageSummary } from '@/features/admin/actions'
+import { syncOddsManual, syncScoresManual, discoverMatchesManual, getOddsApiUsage, type ApiUsageSummary } from '@/features/admin/actions'
 
 interface ApiUsagePanelProps {
   initial: ApiUsageSummary
@@ -42,6 +42,15 @@ export function ApiUsagePanel({ initial }: ApiUsagePanelProps) {
   const doSyncScores = () => {
     startTransition(async () => {
       const res = await syncScoresManual()
+      setLastResult(JSON.stringify(res, null, 2))
+      const fresh = await getOddsApiUsage(30)
+      if (!('error' in fresh)) setUsage(fresh)
+    })
+  }
+
+  const doDiscover = () => {
+    startTransition(async () => {
+      const res = await discoverMatchesManual(sportOverride || undefined)
       setLastResult(JSON.stringify(res, null, 2))
       const fresh = await getOddsApiUsage(30)
       if (!('error' in fresh)) setUsage(fresh)
@@ -96,7 +105,10 @@ export function ApiUsagePanel({ initial }: ApiUsagePanelProps) {
           </p>
         </div>
 
-        <div className="flex gap-2">
+        <div className="flex flex-wrap gap-2">
+          <Button variant="primary" size="sm" onClick={doDiscover} disabled={isPending}>
+            {isPending ? 'Descubriendo...' : 'Discover events'}
+          </Button>
           <Button variant="secondary" size="sm" onClick={doSyncOdds} disabled={isPending}>
             {isPending ? 'Sincronizando...' : 'Sync odds'}
           </Button>
@@ -107,6 +119,10 @@ export function ApiUsagePanel({ initial }: ApiUsagePanelProps) {
             Refrescar
           </Button>
         </div>
+
+        <p className="text-xs text-slate-500">
+          <span className="text-[var(--accent)]">Discover</span>: llama /events (gratis). Linka seeds del Mundial con external_id o inserta matches nuevos (EPL, La Liga) a medida que la API los publica.
+        </p>
 
         {lastResult && (
           <pre className="mt-2 max-h-48 overflow-auto rounded bg-slate-900 p-2 text-[10px] text-slate-300">

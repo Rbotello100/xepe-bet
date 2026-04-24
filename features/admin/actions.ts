@@ -5,7 +5,9 @@ import { createAdminClient } from '@/lib/supabase/admin'
 import { revalidatePath } from 'next/cache'
 import { syncMatchOdds } from '@/lib/sync/odds'
 import { syncFinishedScores, autoResolveMatch } from '@/lib/sync/scores'
+import { discoverAllSports, type DiscoverResult } from '@/lib/sync/discover'
 import { addCredits } from '@/lib/credits'
+import { ACTIVE_SPORT_KEYS } from '@/lib/constants'
 
 /**
  * Devuelve null si el request es de un admin válido; devuelve `{ error }` si falla.
@@ -154,6 +156,24 @@ export async function syncOddsManual(sportKey?: string) {
     const result = await syncMatchOdds(sportKey, 'admin_manual')
     revalidatePath('/admin')
     return result
+  } catch (e) {
+    return { error: (e as Error).message }
+  }
+}
+
+/**
+ * Descubre events nuevos en The Odds API y los reconcilia con la tabla matches.
+ * Linka seeds existentes o inserta matches nuevos a medida que la API los publica.
+ */
+export async function discoverMatchesManual(sportKey?: string): Promise<{ error: string } | { results: DiscoverResult[] }> {
+  const fail = await requireAdmin()
+  if (fail) return fail
+
+  try {
+    const sports = sportKey ? [sportKey] : [...ACTIVE_SPORT_KEYS]
+    const results = await discoverAllSports(sports, 'admin_manual')
+    revalidatePath('/admin')
+    return { results }
   } catch (e) {
     return { error: (e as Error).message }
   }

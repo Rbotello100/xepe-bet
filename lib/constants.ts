@@ -13,6 +13,13 @@ export const PREDICTION_LOCK_HOURS = 24 // predictions lock 24h before kickoff
 // /scores per-sport automatically.
 export const SPORT_KEY = process.env.NEXT_PUBLIC_SPORT_KEY ?? 'soccer_fifa_world_cup'
 
+// Sports activos: el cron diario corre discover() para cada uno de estos.
+// Agregar un sport = agregar aca. No requiere crons nuevos (Vercel Hobby permite solo 1x/dia).
+export const ACTIVE_SPORT_KEYS = [
+  'soccer_fifa_world_cup',
+  'soccer_epl',
+] as const
+
 // --- Scoring Defaults ---
 export const DEFAULT_SCORING = {
   correctWinner: 3,
