@@ -5,6 +5,7 @@ import { createAdminClient } from '@/lib/supabase/admin'
 import { revalidatePath } from 'next/cache'
 import { MIN_BET, MAX_BET, BET_LOCK_HOURS } from '@/lib/constants'
 import { calculateCashOut } from '@/lib/utils/cash-out'
+import { resolveServerOdds, oddsWithinTolerance } from '@/lib/utils/resolve-pick-odds'
 import { deductCredits, addCredits } from '@/lib/credits'
 import type { BetInput, ParlayInput } from './types'
 
@@ -32,19 +33,32 @@ export async function placeBet(input: BetInput) {
   if (input.amount > MAX_BET) return { error: `Apuesta maxima: $${MAX_BET}` }
 
   const admin = db()
-  const { data: match } = await admin.from('matches').select('starts_at, status').eq('id', input.match_id).single()
+  const { data: match } = await admin
+    .from('matches')
+    .select('starts_at, status, odds_home, odds_draw, odds_away')
+    .eq('id', input.match_id)
+    .single()
   if (!match) return { error: 'Partido no encontrado' }
   const matchError = validateMatchOpen(match)
   if (matchError) return { error: matchError }
 
-  const potentialPayout = Math.round(input.amount * input.odds * 100) / 100
+  // Validar odds server-side: el cliente no puede inventar odds infladas.
+  // Se tolera un 10% de drift entre vista y click para absorber sync updates.
+  const serverOdds = resolveServerOdds(match, input.pick)
+  if (!serverOdds) return { error: 'Odds no disponibles para este pick' }
+  if (!oddsWithinTolerance(input.odds, serverOdds)) {
+    return { error: `Las odds cambiaron. Actual: x${serverOdds}. Recargá para ver las nuevas.` }
+  }
 
-  const deduct = await deductCredits(user.id, input.amount, 'bet', `Apuesta ${input.pick} x${input.odds}`)
+  // Usar odds del server para calcular payout — no confiar en input.odds
+  const potentialPayout = Math.round(input.amount * serverOdds * 100) / 100
+
+  const deduct = await deductCredits(user.id, input.amount, 'bet', `Apuesta ${input.pick} x${serverOdds}`)
   if (!deduct.success) return { error: deduct.error ?? 'Creditos insuficientes' }
 
   const { data: bet, error: betError } = await admin.from('bets').insert({
     user_id: user.id, match_id: input.match_id, market_type: input.market_type,
-    pick: input.pick, amount: input.amount, odds_at_placement: input.odds, potential_payout: potentialPayout,
+    pick: input.pick, amount: input.amount, odds_at_placement: serverOdds, potential_payout: potentialPayout,
   }).select('id').single()
 
   if (betError) {
@@ -54,8 +68,8 @@ export async function placeBet(input: BetInput) {
 
   await admin.from('activity_feed').insert({
     user_id: user.id, action_type: 'bet',
-    description: `aposto $${input.amount} a ${input.pick} x${input.odds}`,
-    metadata: { match_id: input.match_id, amount: input.amount, odds: input.odds, market: input.market_type },
+    description: `aposto $${input.amount} a ${input.pick} x${serverOdds}`,
+    metadata: { match_id: input.match_id, amount: input.amount, odds: serverOdds, market: input.market_type },
   })
 
   revalidatePath('/')
@@ -84,10 +98,15 @@ export async function cashOutBet(betId: string) {
 
   const cashOutValue = Math.round(calculateCashOut(bet.odds_at_placement, currentOdds, bet.amount) * 100) / 100
 
-  const { error: updateError } = await admin.from('bets')
+  // Guard atomico: si el UPDATE no afecta ningun row, otro request ya proceso
+  // el cash out (o la bet paso a otro status). Solo pagamos si ganamos la carrera.
+  const { data: updated, error: updateError } = await admin.from('bets')
     .update({ status: 'cashed_out', cash_out_amount: cashOutValue, cashed_out_at: new Date().toISOString() })
     .eq('id', betId).eq('status', 'pending')
+    .select('id')
+    .maybeSingle()
   if (updateError) return { error: 'Error al procesar cash out' }
+  if (!updated) return { error: 'Apuesta ya procesada' }
 
   await addCredits(user.id, cashOutValue, 'cash_out', `Cash out $${cashOutValue}`, betId)
 
@@ -113,17 +132,31 @@ export async function placeParlay(input: ParlayInput) {
   const matchIds = input.legs.map(l => l.match_id)
   if (new Set(matchIds).size !== matchIds.length) return { error: 'No puedes agregar dos selecciones del mismo partido' }
 
+  // Validar cada leg: match valido + odds server-side contra DB
+  const serverLegs: { match_id: string; pick: string; market_type: string; odds: number }[] = []
   for (const leg of input.legs) {
-    const { data: match } = await admin.from('matches').select('starts_at, status').eq('id', leg.match_id).single()
+    const { data: match } = await admin
+      .from('matches')
+      .select('starts_at, status, odds_home, odds_draw, odds_away')
+      .eq('id', leg.match_id)
+      .single()
     if (!match) return { error: 'Partido no encontrado' }
     const err = validateMatchOpen(match)
     if (err) return { error: `${err} (una de las selecciones)` }
+
+    const serverOdds = resolveServerOdds(match, leg.pick)
+    if (!serverOdds) return { error: 'Odds no disponibles para una de las selecciones' }
+    if (!oddsWithinTolerance(leg.odds, serverOdds)) {
+      return { error: `Las odds de una seleccion cambiaron. Recargá para ver las nuevas.` }
+    }
+    serverLegs.push({ match_id: leg.match_id, pick: leg.pick, market_type: leg.market_type, odds: serverOdds })
   }
 
-  const totalOdds = Math.round(input.legs.reduce((acc, leg) => acc * leg.odds, 1) * 100) / 100
+  // Total odds y payout calculados con odds del server
+  const totalOdds = Math.round(serverLegs.reduce((acc, leg) => acc * leg.odds, 1) * 100) / 100
   const potentialPayout = Math.round(input.amount * totalOdds * 100) / 100
 
-  const deduct = await deductCredits(user.id, input.amount, 'parlay', `Parlay ${input.legs.length} legs x${totalOdds}`)
+  const deduct = await deductCredits(user.id, input.amount, 'parlay', `Parlay ${serverLegs.length} legs x${totalOdds}`)
   if (!deduct.success) return { error: deduct.error ?? 'Creditos insuficientes' }
 
   const { data: parlay, error: parlayError } = await admin.from('parlays').insert({
@@ -136,7 +169,7 @@ export async function placeParlay(input: ParlayInput) {
   }
 
   const { error: legsError } = await admin.from('parlay_legs').insert(
-    input.legs.map(leg => ({ parlay_id: parlay.id, match_id: leg.match_id, market_type: leg.market_type, pick: leg.pick, odds: leg.odds }))
+    serverLegs.map(leg => ({ parlay_id: parlay.id, match_id: leg.match_id, market_type: leg.market_type, pick: leg.pick, odds: leg.odds }))
   )
 
   if (legsError) {

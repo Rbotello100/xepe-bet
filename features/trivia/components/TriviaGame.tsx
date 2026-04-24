@@ -11,10 +11,18 @@ interface TriviaGameProps {
   questions: TriviaQuestion[]
 }
 
+// is_correct se calcula server-side para prevenir manipulacion. Aca solo trackeamos
+// local para mostrar el progreso mientras el user juega.
 interface Answer {
   question_id: string
   selected_option: number
-  is_correct: boolean
+  is_correct: boolean   // solo UI local
+  time_taken_ms: number
+}
+
+interface SubmittedAnswer {
+  question_id: string
+  selected_option: number
   time_taken_ms: number
 }
 
@@ -55,10 +63,14 @@ export function TriviaGame({ questions }: TriviaGameProps) {
         setRevealed(false)
         setStartTime(Date.now())
       } else {
-        // Submit
-        const allAnswers = [...answers, answer]
+        // Submit — el server valida y calcula is_correct; acá solo mandamos lo minimo
+        const payload: SubmittedAnswer[] = [...answers, answer].map(a => ({
+          question_id: a.question_id,
+          selected_option: a.selected_option,
+          time_taken_ms: a.time_taken_ms,
+        }))
         setFinished(true)
-        submitTrivia(allAnswers).then(res => {
+        submitTrivia(payload).then(res => {
           if (res && 'correct_answers' in res) setResult(res as typeof result)
         })
       }

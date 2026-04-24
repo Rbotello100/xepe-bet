@@ -4,6 +4,7 @@ import { createServerClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { revalidatePath } from 'next/cache'
 import { deductCredits, addCredits } from '@/lib/credits'
+import { MIN_BET, MAX_BET } from '@/lib/constants'
 
 async function getAuthUser() {
   const supabase = await createServerClient()
@@ -158,6 +159,12 @@ function getPenaltyNextProb(goalsScored: number): number {
 export async function startPenaltyGame(bet: number) {
   const user = await getAuthUser()
   if (!user) return { error: 'No autenticado' }
+
+  // Validacion de monto: finite, positivo, dentro del rango permitido.
+  // Evita bet negativo (deductCredits suma en vez de restar) o NaN.
+  if (!Number.isFinite(bet) || bet < MIN_BET || bet > MAX_BET) {
+    return { error: `Apuesta debe estar entre $${MIN_BET} y $${MAX_BET}` }
+  }
 
   // Cancelar cualquier sesión activa previa (defensa contra abandono)
   const admin = db()

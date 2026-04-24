@@ -5,6 +5,10 @@ import { createAdminClient } from '@/lib/supabase/admin'
 /**
  * Unified credit operations with audit trail.
  * EVERY credit change in the app MUST go through these functions.
+ *
+ * Los UPDATES de balance son atomicos via Postgres functions (ver
+ * supabase/migrations-atomic-credits-v1.sql). Cero race conditions entre
+ * requests paralelos del mismo user.
  */
 
 type TransactionType = 'signup' | 'bet' | 'win' | 'cash_out' | 'trivia' | 'parlay' | 'refund' | 'casino_bet' | 'casino_win'
@@ -16,7 +20,8 @@ interface CreditResult {
 }
 
 /**
- * Deduct credits from user. Fails if insufficient.
+ * Deduct credits from user. Fails if insufficient or amount <= 0.
+ * Atomic: no race conditions.
  */
 export async function deductCredits(
   userId: string,
@@ -25,32 +30,42 @@ export async function deductCredits(
   description: string,
   referenceId?: string
 ): Promise<CreditResult> {
+  // Validacion de entrada — protege contra montos negativos/NaN
+  if (!Number.isFinite(amount) || amount <= 0) {
+    return { success: false, newBalance: 0, error: 'Monto invalido' }
+  }
+
   const admin = createAdminClient()
 
-  const { data: profile } = await admin.from('profiles').select('credits').eq('id', userId).single()
-  if (!profile) return { success: false, newBalance: 0, error: 'Perfil no encontrado' }
-  if (profile.credits < amount) return { success: false, newBalance: profile.credits, error: 'Creditos insuficientes' }
+  const { data, error } = await admin.rpc('deduct_credits_atomic', {
+    p_user_id: userId,
+    p_amount: amount,
+  })
 
-  const newBalance = Math.round((profile.credits - amount) * 100) / 100
+  if (error || !data || data.length === 0) {
+    return { success: false, newBalance: 0, error: 'Error al descontar' }
+  }
 
-  const { error } = await admin.from('profiles').update({ credits: newBalance }).eq('id', userId)
-  if (error) return { success: false, newBalance: profile.credits, error: 'Error al descontar' }
+  const result = data[0] as { success: boolean; new_balance: number }
+  if (!result.success) {
+    return { success: false, newBalance: result.new_balance ?? 0, error: 'Creditos insuficientes' }
+  }
 
-  // Log transaction
+  // Log transaction — fire and forget (si falla el log no revertimos, es audit)
   await admin.from('credit_transactions').insert({
     user_id: userId,
     amount: -amount,
     type,
-    balance_after: newBalance,
+    balance_after: result.new_balance,
     reference_id: referenceId ?? null,
     description,
   }).then(() => {}, () => {})
 
-  return { success: true, newBalance }
+  return { success: true, newBalance: result.new_balance }
 }
 
 /**
- * Add credits to user.
+ * Add credits to user. Atomic.
  */
 export async function addCredits(
   userId: string,
@@ -59,27 +74,36 @@ export async function addCredits(
   description: string,
   referenceId?: string
 ): Promise<CreditResult> {
+  if (!Number.isFinite(amount) || amount <= 0) {
+    return { success: false, newBalance: 0, error: 'Monto invalido' }
+  }
+
   const admin = createAdminClient()
 
-  const { data: profile } = await admin.from('profiles').select('credits').eq('id', userId).single()
-  if (!profile) return { success: false, newBalance: 0, error: 'Perfil no encontrado' }
+  const { data, error } = await admin.rpc('add_credits_atomic', {
+    p_user_id: userId,
+    p_amount: amount,
+  })
 
-  const newBalance = Math.round((profile.credits + amount) * 100) / 100
+  if (error || !data || data.length === 0) {
+    return { success: false, newBalance: 0, error: 'Error al acreditar' }
+  }
 
-  const { error } = await admin.from('profiles').update({ credits: newBalance }).eq('id', userId)
-  if (error) return { success: false, newBalance: profile.credits, error: 'Error al acreditar' }
+  const result = data[0] as { success: boolean; new_balance: number }
+  if (!result.success) {
+    return { success: false, newBalance: 0, error: 'Perfil no encontrado' }
+  }
 
-  // Log transaction
   await admin.from('credit_transactions').insert({
     user_id: userId,
     amount: +amount,
     type,
-    balance_after: newBalance,
+    balance_after: result.new_balance,
     reference_id: referenceId ?? null,
     description,
   }).then(() => {}, () => {})
 
-  return { success: true, newBalance }
+  return { success: true, newBalance: result.new_balance }
 }
 
 /**

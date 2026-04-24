@@ -23,7 +23,7 @@ export function AdminTestPanel() {
     setResults(prev => [...prev, { name, status: 'pending' }])
   }
 
-  // Test 1: Sync Odds from The Odds API
+  // Test 1: Sync Odds (authenticated admin endpoint)
   const testSyncOdds = async () => {
     const name = 'Sync Odds (The Odds API)'
     addResult(name)
@@ -42,7 +42,7 @@ export function AdminTestPanel() {
     }
   }
 
-  // Test 2: Sync Scores from The Odds API
+  // Test 2: Sync Scores (authenticated admin endpoint)
   const testSyncScores = async () => {
     const name = 'Sync Scores (The Odds API)'
     addResult(name)
@@ -61,85 +61,9 @@ export function AdminTestPanel() {
     }
   }
 
-  // Test 3: Check The Odds API directly
-  const testOddsAPI = async () => {
-    const name = 'The Odds API - Events (gratis)'
-    addResult(name)
-    updateResult(name, { status: 'running' })
-
-    try {
-      const res = await fetch('/api/test/odds-events')
-      const data = await res.json()
-      updateResult(name, {
-        status: data.error ? 'error' : 'success',
-        message: data.error ?? `${data.count} eventos encontrados para ${data.sport}`,
-        data,
-      })
-    } catch (e) {
-      updateResult(name, { status: 'error', message: (e as Error).message })
-    }
-  }
-
-  // Test 4: Import live league (default sport)
-  const testImportLeague = async () => {
-    const name = 'Importar Liga Activa'
-    addResult(name)
-    updateResult(name, { status: 'running' })
-
-    try {
-      const res = await fetch('/api/test/import-league', { method: 'POST' })
-      const data = await res.json()
-      updateResult(name, {
-        status: data.error ? 'error' : 'success',
-        message: data.error ?? data.message,
-        data,
-      })
-    } catch (e) {
-      updateResult(name, { status: 'error', message: (e as Error).message })
-    }
-  }
-
-  // Test 5b: One-click EPL demo (import + sync)
-  const testImportEplDemo = async () => {
-    const name = 'Demo EPL (import + sync odds)'
-    addResult(name)
-    updateResult(name, { status: 'running' })
-
-    try {
-      // Step 1: import EPL events as matches
-      const importRes = await fetch('/api/test/import-league?sport=soccer_epl', { method: 'POST' })
-      const importData = await importRes.json()
-      if (importData.error) {
-        updateResult(name, { status: 'error', message: `Import fallo: ${importData.error}`, data: importData })
-        return
-      }
-
-      // Step 2: sync odds for the freshly imported EPL matches
-      const syncRes = await fetch('/api/admin/sync-odds?sport=soccer_epl', { method: 'POST' })
-      const syncData = await syncRes.json()
-      if (syncData.error) {
-        updateResult(name, {
-          status: 'error',
-          message: `Imported ${importData.matches_created} pero sync fallo: ${syncData.error}`,
-          data: { importData, syncData },
-        })
-        return
-      }
-
-      updateResult(name, {
-        status: 'success',
-        message: `Importados ${importData.matches_created} partidos, odds sincronizadas: ${syncData.synced ?? 0}`,
-        data: { importData, syncData },
-      })
-    } catch (e) {
-      updateResult(name, { status: 'error', message: (e as Error).message })
-    }
-  }
-
   const runAllTests = async () => {
     setRunning(true)
     setResults([])
-    await testOddsAPI()
     await testSyncOdds()
     await testSyncScores()
     setRunning(false)
@@ -167,22 +91,17 @@ export function AdminTestPanel() {
         <Button onClick={runAllTests} disabled={running}>
           {running ? 'Ejecutando...' : 'Ejecutar todos los tests'}
         </Button>
-        <Button variant="secondary" onClick={testOddsAPI} disabled={running}>
-          Test Odds API
-        </Button>
         <Button variant="secondary" onClick={testSyncOdds} disabled={running}>
           Sync Odds
         </Button>
         <Button variant="secondary" onClick={testSyncScores} disabled={running}>
           Sync Scores
         </Button>
-        <Button variant="secondary" onClick={testImportLeague} disabled={running}>
-          Importar Liga Activa
-        </Button>
-        <Button variant="primary" onClick={testImportEplDemo} disabled={running}>
-          Demo EPL (import + odds)
-        </Button>
       </div>
+
+      <p className="text-xs text-slate-500">
+        Para importar ligas nuevas (EPL, La Liga, etc.) usa el boton &ldquo;Discover events&rdquo; en el panel Admin &gt; API Usage.
+      </p>
 
       {results.length > 0 && (
         <div className="space-y-2">

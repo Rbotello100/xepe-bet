@@ -6,25 +6,60 @@ import { revalidatePath } from 'next/cache'
 import { TRIVIA_REWARDS } from '@/lib/constants'
 import { addCredits } from '@/lib/credits'
 
-interface TriviaAnswer {
+/**
+ * Respuesta recibida del cliente: SOLO la opcion seleccionada y tiempo.
+ * El server calcula is_correct contra la DB — si el cliente manda un campo
+ * 'is_correct' igual se ignora. De esta forma no se puede falsificar premios.
+ */
+interface TriviaAnswerInput {
   question_id: string
   selected_option: number
-  is_correct: boolean
   time_taken_ms: number
 }
 
-export async function submitTrivia(answers: TriviaAnswer[]) {
+export async function submitTrivia(answers: TriviaAnswerInput[]) {
   const supabase = await createServerClient()
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return { error: 'No autenticado' }
 
+  if (!Array.isArray(answers) || answers.length === 0) {
+    return { error: 'Respuestas invalidas' }
+  }
+
   const admin = createAdminClient()
 
-  const totalQuestions = answers.length
-  const correctAnswers = answers.filter(a => a.is_correct).length
+  // 1. Cargar correct_option de cada pregunta DESDE LA DB, no del cliente
+  const questionIds = answers.map(a => a.question_id)
+  const { data: questions, error: qError } = await admin
+    .from('trivia_questions')
+    .select('id, correct_option')
+    .in('id', questionIds)
+
+  if (qError || !questions) return { error: 'Error al validar respuestas' }
+
+  // 2. Mapear id → correct_option para lookup O(1)
+  const correctMap = new Map<string, number>()
+  for (const q of questions) correctMap.set(q.id, q.correct_option)
+
+  // 3. Validar cada respuesta server-side
+  const validatedAnswers = answers.map(a => {
+    const correct = correctMap.get(a.question_id)
+    return {
+      question_id: a.question_id,
+      selected_option: a.selected_option,
+      is_correct: correct !== undefined && a.selected_option === correct,
+      time_taken_ms: a.time_taken_ms,
+    }
+  })
+
+  // Si alguna pregunta no existe en DB, rechazar toda la sesion (previene inyeccion)
+  const invalidQuestion = validatedAnswers.find(a => !correctMap.has(a.question_id))
+  if (invalidQuestion) return { error: 'Pregunta invalida' }
+
+  const totalQuestions = validatedAnswers.length
+  const correctAnswers = validatedAnswers.filter(a => a.is_correct).length
   const allCorrect = correctAnswers === totalQuestions
 
-  // Credits only if ALL correct
   const creditsEarned = allCorrect
     ? (TRIVIA_REWARDS[totalQuestions as keyof typeof TRIVIA_REWARDS] ?? 0)
     : 0
@@ -47,9 +82,9 @@ export async function submitTrivia(answers: TriviaAnswer[]) {
     return { error: 'Error al guardar trivia' }
   }
 
-  // Save answers
+  // Save answers (con is_correct calculado server-side)
   await admin.from('trivia_answers').insert(
-    answers.map(a => ({
+    validatedAnswers.map(a => ({
       session_id: session.id,
       question_id: a.question_id,
       selected_option: a.selected_option,
