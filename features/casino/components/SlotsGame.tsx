@@ -105,7 +105,7 @@ export function SlotsGame({ credits }: { credits: number }) {
     }, 80)
 
     // Llamar al servidor
-    const res = await playSlots(10)
+    const res = await playSlots()
 
     if (intervalRef.current) clearInterval(intervalRef.current)
 

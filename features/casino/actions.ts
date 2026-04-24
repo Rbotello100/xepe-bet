@@ -4,7 +4,6 @@ import { createServerClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { revalidatePath } from 'next/cache'
 import { deductCredits, addCredits } from '@/lib/credits'
-import { MIN_BET, MAX_BET } from '@/lib/constants'
 
 async function getAuthUser() {
   const supabase = await createServerClient()
@@ -51,9 +50,10 @@ async function recordCasinoSession(
 
 // ==========================================================
 // SLOTS 3×3 — 3 paylines (RTP ~88%)
-// PAYOUTS son absolutos para una apuesta base de MIN_BET ($10).
-// Se escalan linealmente con el monto apostado: payout = PAYOUTS[sym] * (bet / MIN_BET)
+// Costo fijo por giro ($10). Los payouts son fijos tambien — a mejor simbolo
+// mayor premio pero menor probabilidad (definida por WEIGHTS).
 // ==========================================================
+const SLOTS_COST = 10
 const SYMBOLS = ['s1', 's2', 's3', 's4', 's5', 's6']
 const WEIGHTS = [4, 8, 14, 24, 30, 20]
 
@@ -92,21 +92,12 @@ function checkWinLines(grid: string[]): { winLine: number[]; symbol: string; pay
   return best
 }
 
-export async function playSlots(bet: number) {
+export async function playSlots() {
   const user = await getAuthUser()
   if (!user) return { error: 'No autenticado' }
 
-  // Validar monto: debe ser numero finito y dentro del rango permitido.
-  // Si la apuesta es invalida no corre el spin — ni cobra ni da grid.
-  if (!Number.isFinite(bet) || bet < MIN_BET || bet > MAX_BET) {
-    return { error: `Apuesta minima $${MIN_BET}, maxima $${MAX_BET}` }
-  }
-
   const free = await canPlayToday(user.id, 'slots')
-  const cost = free ? 0 : bet
-  // effectiveBet define el nivel de pago: free usa MIN_BET como referencia,
-  // pagas usa el monto real. Asi free = pagos base, pagando mas = pagos escalados.
-  const effectiveBet = free ? MIN_BET : bet
+  const cost = free ? 0 : SLOTS_COST
 
   if (cost > 0) {
     const result = await deductCredits(user.id, cost, 'casino_bet', `Slots giro $${cost}`)
@@ -115,8 +106,7 @@ export async function playSlots(bet: number) {
 
   const grid = Array.from({ length: 9 }, () => spinCell())
   const win = checkWinLines(grid)
-  const rawPayout = win ? win.payout * (effectiveBet / MIN_BET) : 0
-  const payout = Math.round(rawPayout * 100) / 100
+  const payout = win?.payout ?? 0
 
   if (payout > 0) {
     await addCredits(user.id, payout, 'casino_win', `Slots gano $${payout}`)
