@@ -6,8 +6,10 @@ import { SlotsGame } from './SlotsGame'
 import { PenaltyGame } from './PenaltyGame'
 import { ScratchGame } from './ScratchGame'
 import { MinesGame } from './MinesGame'
+import { FelipeGame } from './FelipeGame'
 
 const TABS = [
+  { key: 'felipe', label: '¿Donde esta Felipe?', icon: '🕵️' },
   { key: 'slots', label: 'Slots', icon: '🎰' },
   { key: 'mines', label: 'Cancha Minada', icon: '⚠️' },
   { key: 'penalty', label: 'Penales', icon: '⚽' },
@@ -20,7 +22,7 @@ interface CasinoTabsProps {
 }
 
 export function CasinoTabs({ credits, userId }: CasinoTabsProps) {
-  const [activeTab, setActiveTab] = useState<string>('slots')
+  const [activeTab, setActiveTab] = useState<string>('felipe')
 
   return (
     <div className="space-y-4">
@@ -42,6 +44,7 @@ export function CasinoTabs({ credits, userId }: CasinoTabsProps) {
         ))}
       </div>
 
+      {activeTab === 'felipe' && <FelipeGame credits={credits} />}
       {activeTab === 'slots' && <SlotsGame credits={credits} />}
       {activeTab === 'mines' && <MinesGame />}
       {activeTab === 'penalty' && <PenaltyGame />}

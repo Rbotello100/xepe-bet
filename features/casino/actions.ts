@@ -5,6 +5,13 @@ import { createAdminClient } from '@/lib/supabase/admin'
 import { revalidatePath } from 'next/cache'
 import { deductCredits, addCredits } from '@/lib/credits'
 import { MIN_BET, MAX_BET } from '@/lib/constants'
+import {
+  FELIPE_ROOMS,
+  FELIPE_CHIPS,
+  getRoomById,
+  getRoomMultiplier,
+  pickWinningRoomServer,
+} from './felipe-config'
 
 async function getAuthUser() {
   const supabase = await createServerClient()
@@ -684,5 +691,185 @@ export async function cashoutMines(sessionId: string) {
     multiplier,
     safeRevealed,
     minePositions: session.mine_positions,
+  }
+}
+
+// ==========================================================
+// ¿DONDE ESTA FELIPE? — Casino game multi-bet con reveal
+// ==========================================================
+// Flow: placeFelipeBets descuenta total, crea session 'active'.
+// revealFelipe corre RNG ponderado server-side, paga, cierra session.
+// Guards atomicos previenen doble reveal y bypass de chips.
+// ==========================================================
+
+interface FelipeBetInput {
+  room_id: string
+  amount: number
+}
+
+const FELIPE_MAX_BETS_PER_ROUND = 24 // todas las salas
+
+export async function placeFelipeBets(bets: FelipeBetInput[]) {
+  const user = await getAuthUser()
+  if (!user) return { error: 'No autenticado' }
+
+  if (!Array.isArray(bets) || bets.length === 0) {
+    return { error: 'Tenes que apostar a al menos una sala' }
+  }
+  if (bets.length > FELIPE_MAX_BETS_PER_ROUND) {
+    return { error: 'Demasiadas apuestas' }
+  }
+
+  // Validar cada bet: room_id existe, amount es chip valido
+  const validatedBets: FelipeBetInput[] = []
+  for (const b of bets) {
+    if (!getRoomById(b.room_id)) {
+      return { error: `Sala invalida: ${b.room_id}` }
+    }
+    if (!Number.isFinite(b.amount) || b.amount <= 0) {
+      return { error: 'Monto invalido' }
+    }
+    if (!FELIPE_CHIPS.includes(b.amount as typeof FELIPE_CHIPS[number])) {
+      return { error: `Ficha invalida. Permitidas: $${FELIPE_CHIPS.join(', $')}` }
+    }
+    validatedBets.push({ room_id: b.room_id, amount: b.amount })
+  }
+
+  // Sin duplicados de sala (si quiere apostar mas, que stackee chip mas alto)
+  const roomIds = validatedBets.map(b => b.room_id)
+  if (new Set(roomIds).size !== roomIds.length) {
+    return { error: 'No podes apostar dos veces a la misma sala' }
+  }
+
+  const totalBet = validatedBets.reduce((sum, b) => sum + b.amount, 0)
+  if (totalBet < MIN_BET) return { error: `Apuesta minima total: $${MIN_BET}` }
+  if (totalBet > MAX_BET * 5) return { error: `Apuesta maxima total: $${MAX_BET * 5}` }
+
+  const admin = db()
+
+  // Cancelar cualquier sesion activa previa (defensa contra abandono)
+  await admin
+    .from('felipe_sessions')
+    .update({ status: 'expired' })
+    .eq('user_id', user.id)
+    .eq('status', 'active')
+
+  // Descontar el total ANTES de crear la sesion (atomic)
+  const deduct = await deductCredits(
+    user.id,
+    totalBet,
+    'casino_bet',
+    `Felipe ronda ${validatedBets.length} apuesta(s) total $${totalBet}`,
+  )
+  if (!deduct.success) return { error: deduct.error ?? 'Creditos insuficientes' }
+
+  const { data: session, error } = await admin
+    .from('felipe_sessions')
+    .insert({
+      user_id: user.id,
+      bets: validatedBets,
+      total_bet: totalBet,
+      status: 'active',
+    })
+    .select('id')
+    .single()
+
+  if (error || !session) {
+    // Rollback del deduct
+    await addCredits(user.id, totalBet, 'refund', 'Rollback Felipe sesion fallida')
+    return { error: 'Error al crear ronda' }
+  }
+
+  return {
+    success: true,
+    sessionId: session.id,
+    totalBet,
+    betCount: validatedBets.length,
+  }
+}
+
+export async function revealFelipe(sessionId: string) {
+  const user = await getAuthUser()
+  if (!user) return { error: 'No autenticado' }
+
+  const admin = db()
+
+  // Pick ganador server-side ANTES del UPDATE (RNG no manipulable)
+  const winningRoom = pickWinningRoomServer()
+  const winningRoomData = getRoomById(winningRoom)!
+
+  // Cargar bets de la sesion para calcular payout
+  const { data: session, error: loadError } = await admin
+    .from('felipe_sessions')
+    .select('id, bets, total_bet, status')
+    .eq('id', sessionId)
+    .eq('user_id', user.id)
+    .eq('status', 'active')
+    .single()
+
+  if (loadError || !session) return { error: 'Sesion invalida o ya revelada' }
+
+  const bets = session.bets as FelipeBetInput[]
+
+  // Calcular payout: solo las apuestas a la sala ganadora pagan
+  let payout = 0
+  let winningBetAmount = 0
+  for (const bet of bets) {
+    if (bet.room_id === winningRoom) {
+      const multiplier = getRoomMultiplier(winningRoomData.prob)
+      payout += Math.round(bet.amount * multiplier * 100) / 100
+      winningBetAmount = bet.amount
+    }
+  }
+
+  // Cerrar sesion atomicamente (guard contra doble reveal)
+  const { data: updated, error: updateError } = await admin
+    .from('felipe_sessions')
+    .update({
+      status: 'revealed',
+      winning_room: winningRoom,
+      payout,
+      revealed_at: new Date().toISOString(),
+    })
+    .eq('id', sessionId)
+    .eq('status', 'active')
+    .select('id')
+    .maybeSingle()
+
+  if (updateError || !updated) return { error: 'Sesion ya revelada' }
+
+  // Pagar SOLO si gano algo y solo despues de cerrar la sesion
+  if (payout > 0) {
+    await addCredits(
+      user.id,
+      payout,
+      'casino_win',
+      `Felipe estaba en ${winningRoomData.name}, gano $${payout}`,
+      sessionId,
+    )
+  }
+
+  // Activity feed (publico, todos lo ven)
+  await admin.from('activity_feed').insert({
+    user_id: user.id,
+    action_type: 'achievement',
+    description: payout > 0
+      ? `encontro a Felipe en ${winningRoomData.name} y gano $${payout}`
+      : `aposto a Felipe pero estaba en ${winningRoomData.name}`,
+    metadata: {
+      game: 'felipe',
+      winning_room: winningRoom,
+      total_bet: session.total_bet,
+      payout,
+    },
+  })
+
+  revalidatePath('/casino')
+  return {
+    winningRoom,
+    winningRoomName: winningRoomData.name,
+    payout,
+    winningBetAmount,
+    totalBet: session.total_bet,
   }
 }
