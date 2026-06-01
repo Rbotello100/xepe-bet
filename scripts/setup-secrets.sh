@@ -1,36 +1,26 @@
 #!/usr/bin/env bash
 #
-# Setup de secrets — Rodrigo puede correrlo HOY (tiene Secret Manager access).
+# Carga los 3 secrets de runtime en GCP Secret Manager (proyecto dm-agents).
+# Idempotente: si ya existen, agrega una nueva versión.
 #
-# Carga los secrets en:
-#   - GCP Secret Manager (los que necesita Cloud Run en runtime)
-#   - GitHub Repository Secrets (los que necesita el workflow de build)
+# Los valores se leen con `read -s` (no se imprimen, no se persisten en historial).
 #
-# Los valores se leen con `read -s` (sin echo), nunca se imprimen ni se persisten.
-#
-# CÓMO EJECUTAR:
-#   ./scripts/setup-secrets.sh
-#
-# PRE-REQS:
+# Pre-reqs:
 #   - gcloud autenticado en dm-agents
-#   - gh autenticado en GitHub
+#   - Secret Manager API habilitado (ya está)
+#
+# Uso:
+#   ./scripts/setup-secrets.sh
 
 set -euo pipefail
 
 PROJECT_ID="dm-agents"
-REPO="Rbotello100/mundial-betting"
 
 echo "→ Project: ${PROJECT_ID}"
-echo "→ Repo:    ${REPO}"
-echo ""
-echo "Vas a pegar 4 valores. No se van a mostrar en pantalla."
-echo "Tomalos del dashboard de Supabase (Settings → API) y de the-odds-api.com."
+echo "  Vas a pegar 2 valores. No se muestran en pantalla."
 echo ""
 
-# ─────────────────────────────────────────────────────────────
-# Secrets de Secret Manager (runtime de Cloud Run)
-# ─────────────────────────────────────────────────────────────
-create_or_update_secret() {
+create_or_update() {
   local NAME="$1"
   local VALUE="$2"
   if gcloud secrets describe "${NAME}" --project="${PROJECT_ID}" >/dev/null 2>&1; then
@@ -42,56 +32,63 @@ create_or_update_secret() {
   fi
 }
 
-echo "→ [1/2] Secrets en GCP Secret Manager..."
-
+# ─── Secrets de runtime ─────────────────────────
 read -srp "   SUPABASE_SERVICE_ROLE_KEY: " V_SRK && echo
-create_or_update_secret "supabase-service-role-key" "${V_SRK}"
+create_or_update "supabase-service-role-key" "${V_SRK}"
 
-read -srp "   THE_ODDS_API_KEY: " V_ODDS && echo
-create_or_update_secret "the-odds-api-key" "${V_ODDS}"
+read -srp "   THE_ODDS_API_KEY:          " V_ODDS && echo
+create_or_update "the-odds-api-key" "${V_ODDS}"
 
-# CRON_SECRET se genera localmente
-V_CRON=$(openssl rand -hex 32)
-create_or_update_secret "cron-secret" "${V_CRON}"
-echo "      (cron-secret generado automáticamente, queda en Secret Manager)"
+# CRON_SECRET se genera local — nadie tiene que pegarlo
+V_CRON="$(openssl rand -hex 32)"
+create_or_update "cron-secret" "${V_CRON}"
+echo "      (cron-secret auto-generado, queda en Secret Manager)"
 
-# ─────────────────────────────────────────────────────────────
-# Secrets en GitHub (build-time)
-# ─────────────────────────────────────────────────────────────
+unset V_SRK V_ODDS V_CRON
+
+# ─── Grant accessor al runtime SA de Cloud Run ───
+# Cloud Run usa por default el Compute Engine default SA. Necesita
+# roles/secretmanager.secretAccessor sobre cada secret para que --set-secrets
+# funcione en runtime.
+PROJECT_NUMBER=$(gcloud projects describe "${PROJECT_ID}" --format='value(projectNumber)')
+RUNTIME_SA="${PROJECT_NUMBER}-compute@developer.gserviceaccount.com"
+
 echo ""
-echo "→ [2/2] Secrets en GitHub Repository..."
+echo "→ Bindeando secretAccessor al runtime SA: ${RUNTIME_SA}"
+BIND_FAILED=0
+for SECRET in supabase-service-role-key the-odds-api-key cron-secret; do
+  if gcloud secrets add-iam-policy-binding "${SECRET}" \
+       --member="serviceAccount:${RUNTIME_SA}" \
+       --role="roles/secretmanager.secretAccessor" \
+       --project="${PROJECT_ID}" --quiet >/dev/null 2>&1; then
+    echo "   ✓ ${SECRET}"
+  else
+    echo "   ⚠️  ${SECRET} — sin permiso para bind. Ver mensaje abajo."
+    BIND_FAILED=1
+  fi
+done
 
-set_gh_secret() {
-  local NAME="$1"
-  local VALUE="$2"
-  echo -n "${VALUE}" | gh secret set "${NAME}" --repo="${REPO}" --body="$(cat)" >/dev/null 2>&1 || \
-    echo -n "${VALUE}" | gh secret set "${NAME}" --repo="${REPO}"
-  echo "   ✓ ${NAME}"
-}
-
-read -srp "   NEXT_PUBLIC_SUPABASE_URL: " V_URL && echo
-set_gh_secret "NEXT_PUBLIC_SUPABASE_URL" "${V_URL}"
-
-read -srp "   NEXT_PUBLIC_SUPABASE_ANON_KEY: " V_ANON && echo
-set_gh_secret "NEXT_PUBLIC_SUPABASE_ANON_KEY" "${V_ANON}"
-
-# NEXT_PUBLIC_SITE_URL apunta al servicio Cloud Run.
-# Como aún no se deployó, dejamos un placeholder que se actualiza después del primer deploy.
 echo ""
-read -p "   NEXT_PUBLIC_SITE_URL (Cloud Run URL final, o dejá vacío y se completa después del primer deploy): " V_SITE
-if [ -n "${V_SITE}" ]; then
-  set_gh_secret "NEXT_PUBLIC_SITE_URL" "${V_SITE}"
-else
-  set_gh_secret "NEXT_PUBLIC_SITE_URL" "https://mundial-betting-PLACEHOLDER.a.run.app"
-  echo "      placeholder cargado — actualizar después del primer deploy con la URL real"
+echo "✅ Secrets cargados en Secret Manager."
+
+if [ "${BIND_FAILED}" -eq 1 ]; then
+  cat <<EOF
+
+⚠️  No pude darle al runtime SA acceso a algunos secrets (necesita
+   roles/secretmanager.admin sobre el secret, o roles/owner en el proyecto).
+
+   Pedile a IT que corra:
+
+   for s in supabase-service-role-key the-odds-api-key cron-secret; do
+     gcloud secrets add-iam-policy-binding \$s \\
+       --member='serviceAccount:${RUNTIME_SA}' \\
+       --role='roles/secretmanager.secretAccessor' \\
+       --project='${PROJECT_ID}'
+   done
+
+   Sin esto, --set-secrets en deploy.sh va a fallar.
+EOF
 fi
 
-# Cleanup
-unset V_SRK V_ODDS V_CRON V_URL V_ANON V_SITE
-
 echo ""
-echo "→ Listo. Secrets cargados:"
-echo "   GCP Secret Manager:  supabase-service-role-key, the-odds-api-key, cron-secret"
-echo "   GitHub Secrets:      NEXT_PUBLIC_SUPABASE_URL, NEXT_PUBLIC_SUPABASE_ANON_KEY, NEXT_PUBLIC_SITE_URL"
-echo ""
-echo "→ Falta agregar a GitHub: GCP_WIF_PROVIDER y GCP_SA_EMAIL después que IT corra gcp-bootstrap.sh"
+echo "→ Próximo paso: ./scripts/deploy.sh"

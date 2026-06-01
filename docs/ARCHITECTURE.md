@@ -1,7 +1,7 @@
 # Xepe Bet (mundial-betting) — Architecture & Engineering Playbook
 
 > Versión 1.0 · Última actualización: 2026-04-25
-> Stack target: **Next.js 16 (App Router) + Supabase Pro + Cloud Run (GCP `dm-agents`) + GitHub Actions CI/CD + TypeScript 5**
+> Stack target: **Next.js 16 (App Router) + Supabase Pro + Cloud Run (GCP `dm-agents`, deploy manual) + TypeScript 5**. CI/CD via GitHub Actions queda pendiente hasta que IT/SRE habilite los permisos de WIF (ver §11.6).
 
 Este documento es la **fuente de verdad mandatoria** de cómo se piensa, se escribe y se opera este código. No reemplaza a [`CLAUDE.md`](../CLAUDE.md) (guía operativa rápida para agentes), sino que lo profundiza: decisiones, rationale, trade-offs y standards que después se auditan, miden y refactorizan.
 
@@ -21,7 +21,7 @@ Este documento es la **fuente de verdad mandatoria** de cómo se piensa, se escr
 8. [Performance budgets](#8-performance-budgets)
 9. [Escalabilidad](#9-escalabilidad)
 10. [Ciberseguridad — mandatory](#10-ciberseguridad--mandatory)
-11. [Deploy en Cloud Run + CI/CD GitHub Actions](#11-deploy-en-cloud-run--cicd-github-actions)
+11. [Deploy en Cloud Run (manual)](#11-deploy-en-cloud-run-manual)
 12. [Code Review — proceso estricto](#12-code-review--proceso-estricto)
 13. [Definition of Done y PR checklist](#13-definition-of-done-y-pr-checklist)
 14. [Sistema de documentación](#14-sistema-de-documentación)
@@ -656,7 +656,7 @@ export async function placeBet(input: unknown) {
 | 2. Dependencies | `package-lock.json` versionado; `npm ci` en CI |
 | 3. Config | Env vars vía Secret Manager (prod) / `.env.local` (dev). Nunca en código |
 | 4. Backing services | Supabase como recurso attachable (URL en env, swappable) |
-| 5. Build, release, run | GitHub Actions hace build → image → release a Cloud Run. Separados |
+| 5. Build, release, run | `scripts/deploy.sh` separa build (Docker) → release (push a AR + revisión Cloud Run con tag) → run (Cloud Run). Migrar a GitHub Actions cuando se habilite WIF |
 | 6. Processes | Cloud Run es stateless. Estado en Supabase |
 | 7. Port binding | Next.js standalone bindea `$PORT` (3000) |
 | 8. Concurrency | Cloud Run autoescala. Concurrency=80 por instance |
@@ -936,7 +936,12 @@ Antes de cada release:
 
 ---
 
-## 11. Deploy en Cloud Run + CI/CD GitHub Actions
+## 11. Deploy en Cloud Run (manual)
+
+> **Estado actual**: deploy manual desde la laptop con `scripts/deploy.sh`.
+> CI/CD via GitHub Actions queda pendiente hasta que IT/SRE habilite los
+> permisos de Workload Identity Federation. Runbook completo en
+> [GCP-SETUP.md](./GCP-SETUP.md).
 
 ### 11.1. Infraestructura GCP
 
@@ -947,28 +952,28 @@ Antes de cada release:
   - **Artifact Registry** (`mundial-betting`) — docker images.
   - **Secret Manager** — secrets de runtime.
   - **Cloud Scheduler** — cron jobs.
-  - **IAM + Workload Identity Federation** — auth para GitHub Actions sin keys.
 
 ### 11.2. Cloud Run service config
 
 | Setting | Value | Por qué |
 |---|---|---|
-| Image | `us-central1-docker.pkg.dev/dm-agents/mundial-betting/mundial-betting:<sha>` | Versionado por commit |
+| Image | `us-central1-docker.pkg.dev/dm-agents/mundial-betting/mundial-betting:<tag>` | Versionado por timestamp (o tag manual) |
 | Region | `us-central1` | Más servicios disponibles, menor costo |
 | Port | 3000 | Next.js standalone default |
 | Memory | 1Gi | Suficiente para Next.js + SSR |
 | CPU | 1 | Suficiente para ~80 concurrent |
 | Min instances | 0 (dev), 1 (prod) | Min=1 evita cold starts en prod |
-| Max instances | 10 | Tope de seguridad para budget |
+| Max instances | 5 | Tope de seguridad para budget |
 | Concurrency | 80 | Default razonable de Next.js |
 | Timeout | 60s | Suficiente para crons + actions |
 | Allow unauthenticated | sí | App pública, auth a nivel app |
 
 ### 11.3. Env vars en Cloud Run
 
-Configurar via `--set-env-vars` (públicas) y `--set-secrets` (secretas):
+Configurar via `--set-env-vars` (públicas) y `--set-secrets` (secretas).
+`scripts/deploy.sh` ya las arma; este listado es la fuente de verdad.
 
-**Public (build args + runtime):**
+**Public (build args + runtime, vienen de `.env.local`):**
 - `NEXT_PUBLIC_SUPABASE_URL`
 - `NEXT_PUBLIC_SUPABASE_ANON_KEY`
 - `NEXT_PUBLIC_SITE_URL` (URL del Cloud Run service)
@@ -976,93 +981,71 @@ Configurar via `--set-env-vars` (públicas) y `--set-secrets` (secretas):
 - `NODE_ENV=production`
 - `TZ=America/Santiago`
 
-**Secret (Secret Manager refs):**
+**Secret (refs a Secret Manager, NUNCA en `.env.local`):**
 - `SUPABASE_SERVICE_ROLE_KEY` ← `supabase-service-role-key:latest`
 - `THE_ODDS_API_KEY` ← `the-odds-api-key:latest`
 - `CRON_SECRET` ← `cron-secret:latest`
 - `ANTHROPIC_API_KEY` ← `anthropic-api-key:latest` (cuando aplique)
 
-### 11.4. CI/CD via GitHub Actions
+### 11.4. Workflow de deploy manual
 
-`.github/workflows/deploy-cloudrun.yml` ejecuta en cada `push` a `main`:
+```bash
+# Una vez por máquina/proyecto:
+./scripts/setup-secrets.sh        # carga 3 secrets en Secret Manager
 
+# Cada deploy:
+./scripts/deploy.sh               # build + push + deploy + URL
 ```
-1. Checkout
-2. Auth a GCP via Workload Identity Federation (sin keys)
-3. Configure Docker para Artifact Registry
-4. Build Docker image con build args (NEXT_PUBLIC_*)
-5. Push image a Artifact Registry (tag: short-sha + latest)
-6. Deploy a Cloud Run con --set-env-vars + --set-secrets
-7. Output del URL final
-```
+
+Lo que hace `deploy.sh`:
+1. Lee `.env.local` para los `NEXT_PUBLIC_*` (build args).
+2. `docker buildx build --platform linux/amd64` con el `Dockerfile` standalone.
+3. Push de la imagen a Artifact Registry con tag por timestamp.
+4. `gcloud run deploy` con `--set-env-vars` (públicas) + `--set-secrets`
+   (refs a Secret Manager).
+5. Imprime la URL final y advierte si el bundle quedó con `NEXT_PUBLIC_SITE_URL`
+   desactualizada.
 
 Reglas:
-- **Workload Identity Federation**, no service account keys.
-- **Permissions mínimas**: `contents: read`, `id-token: write`.
-- **Timeout 20min** — si no terminó, mata el job.
-- **Secrets en GitHub Repository Secrets**, jamás en código del workflow.
-
-GitHub Secrets requeridos:
-- `GCP_WIF_PROVIDER` (formato `projects/NUMBER/locations/global/workloadIdentityPools/POOL/providers/PROVIDER`)
-- `GCP_SA_EMAIL` (`github-deployer@dm-agents.iam.gserviceaccount.com`)
-- `NEXT_PUBLIC_SUPABASE_URL`
-- `NEXT_PUBLIC_SUPABASE_ANON_KEY`
-- `NEXT_PUBLIC_SITE_URL`
+- **Nunca pasar service role key como `--set-env-vars`** — siempre `--set-secrets`.
+- **Nunca commitear `.env.local`** — está en `.gitignore`.
+- **Tag inmutable por deploy** (timestamp) → permite rollback rápido (sección 11.7).
+- **Primer deploy con URL placeholder + re-deploy** una vez sabemos la URL real
+  (Cloud Run no la conoce antes del primer create).
 
 ### 11.5. Cloud Scheduler — Cron jobs
 
-3 jobs configurados (uno por tarea de sync):
+2 jobs configurados:
 
 ```
-sync-odds:    0 12 * * *   POST <SERVICE_URL>/api/cron/sync-odds
-sync-scores:  0 13 * * *   POST <SERVICE_URL>/api/cron/sync-scores
-generate-feed: 0 14 * * *  POST <SERVICE_URL>/api/cron/generate-feed
+mundial-sync-odds:   */30 * * * *   POST <SERVICE_URL>/api/cron/sync-odds
+mundial-sync-scores: */10 * * * *   POST <SERVICE_URL>/api/cron/sync-scores
 ```
 
-Cada job envía `Authorization: Bearer ${CRON_SECRET}` header.
+- `sync-odds` refresca cuotas para partidos dentro de la ventana de 24 h.
+  El endpoint es idempotente — re-ejecutar es barato.
+- `sync-scores` finaliza partidos pasados los 130 min desde kickoff que aún no
+  están en estado terminal.
 
-Setup vía `scripts/setup-cron.sh`.
+Cada job envía `Authorization: Bearer ${CRON_SECRET}` y el endpoint valida con
+`verifyCronAuth()`. Sin el header válido → 401.
 
-### 11.6. Workload Identity Federation (one-time setup)
+Setup vía `scripts/setup-cron.sh "${SERVICE_URL}"`.
 
-Comandos one-time (corre tú con tu auth `gcloud`):
+### 11.6. Migrar a CI/CD (cuando IT habilite permisos)
 
-```bash
-# 1. Crear pool
-gcloud iam workload-identity-pools create github-pool \
-  --location=global --project=dm-agents
+Para activar GitHub Actions hace falta que Rodrigo tenga (o que IT/SRE corra
+una vez) los siguientes roles en `dm-agents`:
 
-# 2. Crear provider para GitHub
-gcloud iam workload-identity-pools providers create-oidc github-provider \
-  --workload-identity-pool=github-pool \
-  --location=global --project=dm-agents \
-  --issuer-uri=https://token.actions.githubusercontent.com \
-  --attribute-mapping="google.subject=assertion.sub,attribute.repository=assertion.repository" \
-  --attribute-condition="assertion.repository=='Rbotello100/mundial-betting'"
+- `roles/resourcemanager.projectIamAdmin`
+- `roles/iam.serviceAccountAdmin`
+- `roles/iam.workloadIdentityPoolAdmin`
 
-# 3. Service account para deploys
-gcloud iam service-accounts create github-deployer --project=dm-agents
+Con eso se puede crear el WIF pool + provider OIDC bindeado al repo de GitHub,
+agregar `.github/workflows/deploy-cloudrun.yml`, cargar `GCP_WIF_PROVIDER` y
+`GCP_SA_EMAIL` como GitHub Secrets, y el `git push` ya dispara deploy.
 
-# 4. IAM bindings
-gcloud projects add-iam-policy-binding dm-agents \
-  --member="serviceAccount:github-deployer@dm-agents.iam.gserviceaccount.com" \
-  --role="roles/run.admin"
-
-gcloud projects add-iam-policy-binding dm-agents \
-  --member="serviceAccount:github-deployer@dm-agents.iam.gserviceaccount.com" \
-  --role="roles/iam.serviceAccountUser"
-
-gcloud projects add-iam-policy-binding dm-agents \
-  --member="serviceAccount:github-deployer@dm-agents.iam.gserviceaccount.com" \
-  --role="roles/artifactregistry.writer"
-
-# 5. Permitir al GitHub repo asumir el SA
-PROJECT_NUMBER=$(gcloud projects describe dm-agents --format='value(projectNumber)')
-gcloud iam service-accounts add-iam-policy-binding \
-  github-deployer@dm-agents.iam.gserviceaccount.com \
-  --role=roles/iam.workloadIdentityUser \
-  --member="principalSet://iam.googleapis.com/projects/${PROJECT_NUMBER}/locations/global/workloadIdentityPools/github-pool/attribute.repository/Rbotello100/mundial-betting"
-```
+Mientras tanto, el workflow manual descrito en 11.4 es suficiente.
 
 ### 11.7. Observability
 
@@ -1391,7 +1374,7 @@ Además del [DoD general](#13-definition-of-done-y-pr-checklist):
 |---|---|---|
 | Migración Vercel → Cloud Run | Plan | en ejecución |
 | Supabase Free → Pro | Plan | pending |
-| CI/CD GitHub Actions → Cloud Run | Plan | en ejecución |
+| CI/CD GitHub Actions → Cloud Run | Plan | bloqueado por permisos IAM (WIF) — deploy manual mientras tanto |
 | Audit log de eventos sensibles | Plan | parcial (credit_transactions ya existe) |
 | Tests automáticos (Vitest + Playwright) | Plan | pending |
 | Rate limiting casino | Plan | pending |

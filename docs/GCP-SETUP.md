@@ -1,185 +1,216 @@
-# GCP Setup — Cloud Run + CI/CD via GitHub Actions
+# GCP Setup — Deploy manual a Cloud Run
 
-Runbook completo del bootstrap de infraestructura. Sigue este orden.
+Runbook para deployar Xepe Bet a Cloud Run manualmente. **Sin CI/CD por ahora** —
+cuando IT/SRE Xepelin habilite los permisos de Workload Identity Federation, se
+puede agregar GitHub Actions, pero hoy todo se hace desde la laptop.
 
-**Target**: deploy automático a Cloud Run desde GitHub Actions, sin keys de service account, con secrets en Secret Manager.
-
-**Stack**: Cloud Run + Artifact Registry + Cloud Scheduler + Secret Manager + Workload Identity Federation + GitHub Actions.
+**Stack**: Cloud Run + Artifact Registry + Secret Manager + Cloud Scheduler.
 
 ---
 
-## 1. Estado actual (25-abr-2026)
+## 1. Estado actual
 
-### ✅ Ya hecho por Rodrigo
-
-| Recurso | Resultado |
+| Recurso | Estado |
 |---|---|
-| APIs habilitadas | `run`, `artifactregistry`, `secretmanager`, `iam`, `iamcredentials`, `cloudscheduler`, `cloudbuild`, `sts` |
-| Artifact Registry repo | `us-central1-docker.pkg.dev/dm-agents/mundial-betting` |
-| Service Account | `github-deployer@dm-agents.iam.gserviceaccount.com` (sin roles asignados todavía) |
-| Workflow GitHub Actions | [.github/workflows/deploy-cloudrun.yml](../.github/workflows/deploy-cloudrun.yml) |
-| Dockerfile | listo, `output: standalone` en next.config.ts |
-
-### ⛔ Pendiente — bloqueado por permisos IAM
-
-Rodrigo tiene `roles/editor + roles/run.admin + roles/storage.admin` pero NO tiene:
-- `roles/resourcemanager.projectIamAdmin` (para hacer `setIamPolicy` a nivel proyecto)
-- `roles/iam.serviceAccountAdmin` (para bindings sobre service accounts)
-- `roles/iam.workloadIdentityPoolAdmin` (para crear pools WIF)
-
-Por eso requiere que **alguien con esos permisos** (IT/SRE Xepelin, GCP project owner) corra `scripts/gcp-bootstrap.sh`. Después, todo lo demás se desbloquea.
+| Project `dm-agents` | ✅ creado |
+| APIs habilitadas | ✅ `run`, `artifactregistry`, `secretmanager`, `cloudscheduler`, `iam`, `cloudbuild`, `sts` |
+| Artifact Registry | ✅ `us-central1-docker.pkg.dev/dm-agents/mundial-betting` |
+| Service Account `github-deployer` | ⏸️ creada pero NO bindeada (se usaría para CI/CD) |
+| Secret Manager | ⏸️ creas los 3 secrets corriendo `setup-secrets.sh` |
+| Cloud Run service | ⏸️ se crea automáticamente en el primer `deploy.sh` |
+| Cloud Scheduler | ⏸️ se crea con `setup-cron.sh` después del primer deploy |
 
 ---
 
-## 2. Pasos para terminar el setup
+## 2. Setup (una vez)
 
-### Paso 2.1 — Acción de IT/SRE Xepelin (5 minutos)
-
-El admin del proyecto `dm-agents` corre:
+### 2.1. Variables públicas en `.env.local`
 
 ```bash
-git clone https://github.com/Rbotello100/mundial-betting.git
-cd mundial-betting
-gcloud auth login                       # cuenta con projectIamAdmin
-gcloud config set project dm-agents
-./scripts/gcp-bootstrap.sh
+cp .env.example .env.local
 ```
 
-El script asigna roles al SA, crea el WIF pool/provider, bindea la identidad GitHub al SA. Al final imprime:
+Editá `.env.local` y completá los `NEXT_PUBLIC_*`. La anon key de Supabase
+**no es secreta** (sale en el bundle del cliente igual), por eso vive en
+`.env.local` y no en Secret Manager.
 
-```
-GCP_WIF_PROVIDER = projects/<NUMBER>/locations/global/workloadIdentityPools/github-pool/providers/github-provider
-GCP_SA_EMAIL     = github-deployer@dm-agents.iam.gserviceaccount.com
-```
+Para el primer deploy podés dejar `NEXT_PUBLIC_SITE_URL=https://placeholder.a.run.app`.
+Después del primer deploy, lo actualizás con la URL real y re-deployás.
 
-Esos 2 valores se le pasan a Rodrigo para el paso 2.2.
-
-### Paso 2.2 — Acción de Rodrigo (10 minutos)
-
-Con su gcloud + gh autenticados:
+### 2.2. Cargar secrets en Secret Manager
 
 ```bash
-# Carga secrets (Secret Manager + GitHub)
 ./scripts/setup-secrets.sh
-
-# Después que IT corrió el bootstrap, cargá los 2 outputs en GitHub:
-gh secret set GCP_WIF_PROVIDER --body="<output del bootstrap>" --repo=Rbotello100/mundial-betting
-gh secret set GCP_SA_EMAIL     --body="github-deployer@dm-agents.iam.gserviceaccount.com" --repo=Rbotello100/mundial-betting
 ```
 
-### Paso 2.3 — Primer deploy automático
+Pide:
+- `SUPABASE_SERVICE_ROLE_KEY` (Supabase Dashboard → Settings → API → service_role)
+- `THE_ODDS_API_KEY` (the-odds-api.com)
+
+`CRON_SECRET` se autogenera. Los valores se leen con `read -s` (no se imprimen,
+no quedan en `history`).
+
+El script también intenta darle al runtime SA (`<NUM>-compute@developer.gserviceaccount.com`)
+el rol `roles/secretmanager.secretAccessor`. Si falla por permisos, muestra el
+comando exacto para que IT lo corra.
+
+### 2.3. Docker corriendo
 
 ```bash
-# Cualquier push a main dispara el workflow:
-git commit --allow-empty -m "chore: trigger first Cloud Run deploy"
-git push origin main
-
-# O manual:
-gh workflow run deploy-cloudrun --repo=Rbotello100/mundial-betting
+open -a Docker
 ```
 
-El workflow va a:
-1. Auth a GCP via WIF (sin keys).
-2. Build de la imagen Docker con build args inyectados desde GitHub Secrets.
-3. Push a Artifact Registry.
-4. Deploy a Cloud Run con env vars + secret refs.
-5. Imprimir la URL final en el `$GITHUB_STEP_SUMMARY`.
+Esperá unos segundos hasta que esté listo (icono verde en la barra superior).
 
-### Paso 2.4 — Actualizar `NEXT_PUBLIC_SITE_URL`
+---
 
-El primer deploy va a salir con la URL placeholder. Después del primer deploy:
+## 3. Deploy
+
+```bash
+./scripts/deploy.sh
+```
+
+Lo que hace:
+1. Carga `NEXT_PUBLIC_*` desde `.env.local`.
+2. `docker buildx build --platform linux/amd64` con el Dockerfile.
+3. Push de la imagen a `us-central1-docker.pkg.dev/dm-agents/mundial-betting`.
+4. `gcloud run deploy` con `--set-env-vars` (públicas) y `--set-secrets`
+   apuntando a Secret Manager (privadas).
+5. Imprime la URL del servicio.
+
+Tag de la imagen: si no pasás argumento, usa timestamp (`20260531-143020`).
+Para nombrar uno custom: `./scripts/deploy.sh hotfix-cashout`.
+
+### 3.1. Primer deploy
+
+Probable secuencia:
+```bash
+# 1. NEXT_PUBLIC_SITE_URL=https://placeholder.a.run.app en .env.local
+./scripts/deploy.sh
+
+# 2. Sale la URL real, ej. https://mundial-betting-abc123-uc.a.run.app
+
+# 3. Updateá .env.local con esa URL
+sed -i '' "s|NEXT_PUBLIC_SITE_URL=.*|NEXT_PUBLIC_SITE_URL=https://mundial-betting-abc123-uc.a.run.app|" .env.local
+
+# 4. Re-deploy para que el bundle tenga la URL correcta
+./scripts/deploy.sh
+```
+
+Si el bundle del cliente tiene la URL vieja, el script avisa con `⚠️`.
+
+### 3.2. Smoke test
 
 ```bash
 SERVICE_URL=$(gcloud run services describe mundial-betting --region=us-central1 --format='value(status.url)')
-gh secret set NEXT_PUBLIC_SITE_URL --body="${SERVICE_URL}" --repo=Rbotello100/mundial-betting
-
-# Re-deploy para que el bundle del cliente tenga la URL correcta
-gh workflow run deploy-cloudrun --repo=Rbotello100/mundial-betting
+curl -s "${SERVICE_URL}/api/health" | jq .
 ```
 
-### Paso 2.5 — Configurar OAuth callback en Supabase
+---
 
-En Supabase Dashboard → Auth → URL Configuration:
-- Agregar a "Redirect URLs": `${SERVICE_URL}/api/auth/callback`
-- Mantener también `http://localhost:3000/api/auth/callback` para dev.
+## 4. Pasos post-deploy (primera vez)
 
-### Paso 2.6 — Cloud Scheduler para crons
+### 4.1. OAuth redirect en Supabase
+
+Supabase Dashboard → Authentication → URL Configuration → Redirect URLs:
+- Agregar: `${SERVICE_URL}/api/auth/callback`
+- Mantener `http://localhost:3000/api/auth/callback` para dev.
+
+### 4.2. Cron jobs
 
 ```bash
-SERVICE_URL=$(gcloud run services describe mundial-betting --region=us-central1 --format='value(status.url)')
 PROJECT_ID=dm-agents ./scripts/setup-cron.sh "${SERVICE_URL}"
 ```
 
-Crea 3 jobs (12:00 UTC, 13:00 UTC, 14:00 UTC) que pegan a los endpoints de cron del servicio con el `CRON_SECRET` como Bearer.
+Crea 2 jobs:
+- `mundial-sync-odds` — cada 30 min, refresca cuotas de partidos en ventana de 24 h.
+- `mundial-sync-scores` — cada 10 min, finaliza partidos terminados.
 
-### Paso 2.7 — Supabase Pro
+Cada job pega al endpoint correspondiente con `Authorization: Bearer ${CRON_SECRET}`.
 
-Antes del lanzamiento a 450 users, upgrade del plan en Supabase Dashboard → Settings → Billing → Pro ($25/mes). Eso desbloquea:
+### 4.3. Supabase Pro
+
+Antes de abrir a 450 usuarios, upgradeá Supabase Free → Pro ($25/mes):
+Supabase Dashboard → Settings → Billing → Pro.
+
+Lo que se desbloquea:
 - 8 GB DB, 250 GB egress, 500 conexiones Realtime, sin auto-pause, backups diarios.
 
 ---
 
-## 3. Verificación
+## 5. Rollback rápido
 
-Después del primer deploy exitoso:
+Cloud Run guarda todas las revisiones inmutables. Si un deploy rompe algo:
 
 ```bash
-# 1. Servicio respondiendo
-SERVICE_URL=$(gcloud run services describe mundial-betting --region=us-central1 --format='value(status.url)')
-curl -s "${SERVICE_URL}/api/health" | jq .
+# Listar las últimas revisiones
+gcloud run revisions list --service=mundial-betting --region=us-central1 --limit=10
 
-# 2. Workflow corrió bien
-gh run list --workflow=deploy-cloudrun --limit=3 --repo=Rbotello100/mundial-betting
-
-# 3. Cloud Scheduler jobs activos
-gcloud scheduler jobs list --location=us-central1
-
-# 4. Secrets accesibles desde el service (probar con un cron manual)
-gcloud scheduler jobs run sync-odds --location=us-central1
+# Mandar el 100% del tráfico a una revisión anterior
+gcloud run services update-traffic mundial-betting \
+  --region=us-central1 \
+  --to-revisions=mundial-betting-00042-abc=100
 ```
 
----
-
-## 4. Troubleshooting
-
-**Error: "Permission denied" en el workflow al hacer `gcloud run deploy`**
-→ El SA no tiene `roles/run.admin`. Revisar que `gcp-bootstrap.sh` corrió OK.
-
-**Error: "Failed to fetch secret"**
-→ El SA no tiene `roles/secretmanager.secretAccessor`. Revisar bootstrap.
-
-**Error: "Could not create Workload Identity Pool"**
-→ La cuenta que corre el bootstrap no tiene `roles/iam.workloadIdentityPoolAdmin`. Escalar.
-
-**El sitio carga pero el login OAuth falla con `redirect_uri_mismatch`**
-→ Falta agregar `${SERVICE_URL}/api/auth/callback` en Supabase Dashboard → Auth → URL Configuration.
-
-**Cloud Run cold starts demasiado lentos**
-→ Pasar a `--min-instances=1` (cuesta ~$5/mes pero elimina cold start para los críticos).
+Si el rollback involucra schema de DB, revertir migraciones manualmente
+**antes** del traffic switch.
 
 ---
 
-## 5. Costos esperados
+## 6. Troubleshooting
 
-| Servicio | Costo mensual estimado | Notas |
+| Síntoma | Causa probable | Fix |
 |---|---|---|
-| Cloud Run (us-central1) | $5-15 | autoescala, free tier cubre la mayoría |
-| Artifact Registry storage | $1-2 | imágenes Docker |
-| Cloud Scheduler | $0 | 3 jobs, free tier hasta 3 |
-| Secret Manager | $0 | < 6 versiones activas |
-| Cloud Logging | $0 | bajo el free tier (~50 GB/mes) |
-| **Supabase Pro** | **$25** | DB + Auth + Realtime |
-| The Odds API | $0 | free tier 500 créditos/mes |
-| **Total** | **~$30-40/mes** | |
+| `docker: command not found` | Docker no instalado | Instalar Docker Desktop |
+| `Cannot connect to the Docker daemon` | Docker no corre | Abrir Docker Desktop, esperar icono verde |
+| `denied: Permission "artifactregistry.repositories.uploadArtifacts" denied` | Falta auth de docker | El script lo intenta, pero podés correr manual: `gcloud auth configure-docker us-central1-docker.pkg.dev` |
+| `Revision ... not ready` con log `failed to fetch secret` | Runtime SA sin `secretAccessor` | IT corre los `add-iam-policy-binding` del fin de `setup-secrets.sh` |
+| OAuth login redirige a `localhost` | `NEXT_PUBLIC_SITE_URL` mal en build | Actualizar `.env.local` y re-deploy |
+| Cold starts >5s | `min-instances=0` | `gcloud run services update mundial-betting --min-instances=1` (≈$5/mes extra) |
+| Cron jobs fallan 401 | `CRON_SECRET` desactualizado en el header del job | Re-correr `setup-cron.sh` para que actualice los headers |
 
 ---
 
-## 6. Permisos que faltan a Rodrigo (para futuro)
+## 7. Costos esperados
 
-Si IT/SRE quiere darle autonomía a Rodrigo para administrar este proyecto sin escalas futuras, los roles que faltan son:
+| Recurso | Estimado/mes | Notas |
+|---|---|---|
+| Cloud Run | $5–15 | Autoescala, free tier cubre la mayoría |
+| Artifact Registry | $1–2 | Imágenes Docker. Limpiar viejas con `gcloud artifacts versions delete` |
+| Cloud Scheduler | $0 | 2 jobs, free tier hasta 3 |
+| Secret Manager | $0 | <6 versiones activas |
+| Cloud Logging | $0 | Bajo el free tier (~50 GB/mes) |
+| **Supabase Pro** | **$25** | DB + Auth + Realtime |
+| The Odds API | $0 | Free tier 500 créditos/mes |
+| **Total** | **~$30–40/mes** | Hasta ~1k usuarios activos |
 
-- `roles/resourcemanager.projectIamAdmin` — para asignar/quitar roles a nivel proyecto
-- `roles/iam.serviceAccountAdmin` — para crear y administrar service accounts
-- `roles/iam.workloadIdentityPoolAdmin` — para administrar WIF
+---
 
-Con esos 3 podría correr `gcp-bootstrap.sh` él mismo.
+## 8. Permisos requeridos para deploy manual
+
+Lo que Rodrigo necesita en `dm-agents` (lo tiene hoy):
+- ✅ `roles/editor` (incluye build + push + deploy)
+- ✅ `roles/run.admin` (deploy + update Cloud Run)
+- ✅ `roles/storage.admin` (push a Artifact Registry)
+
+Lo que falta para que `setup-secrets.sh` pueda bindear el runtime SA al secret
+automáticamente (sin pedirle a IT):
+- ⛔ `roles/secretmanager.admin` (sobre los 3 secrets o sobre el proyecto)
+
+Si no lo tiene, el script genera el comando exacto para que IT lo corra una sola
+vez. Después no se necesita más.
+
+---
+
+## 9. Si en el futuro queremos CI/CD
+
+Cuando IT/SRE habilite los 3 roles que faltan en Rodrigo
+(`projectIamAdmin` + `serviceAccountAdmin` + `workloadIdentityPoolAdmin`),
+se puede:
+
+1. Crear el WIF pool/provider con `gcloud iam workload-identity-pools create ...`.
+2. Bindear `roles/iam.workloadIdentityUser` al SA `github-deployer`.
+3. Agregar `.github/workflows/deploy-cloudrun.yml` (ver historial git para el template).
+4. Cargar `GCP_WIF_PROVIDER` y `GCP_SA_EMAIL` como GitHub Secrets.
+
+Mientras tanto, este runbook es lo que usamos.
