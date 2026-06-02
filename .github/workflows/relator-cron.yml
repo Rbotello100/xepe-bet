@@ -1,0 +1,45 @@
+name: Relator feed cron
+
+# Mantiene el feed del Relator (ai_feed table) con contenido fresco generado
+# por Anthropic. Llama al endpoint POST /api/cron/generate-feed cada 30 min
+# con el CRON_SECRET. Es complemento de los hooks on-event que existen en las
+# Server Actions (placeBet, cashOut, etc.) — los hooks reaccionan a actividad
+# importante, este cron asegura contenido base aunque no haya actividad.
+#
+# Por que GitHub Actions y no Vercel cron:
+#   - Vercel Hobby permite solo 1 cron/dia. Para que el Relator se sienta vivo
+#     necesitamos mas frecuencia (30 min). GitHub Actions free tier cubre esto
+#     sin problema (~1.4k minutos/mes).
+#
+# Para deshabilitar: comentar el schedule. workflow_dispatch queda para
+# disparar manual desde el UI de GitHub.
+
+on:
+  schedule:
+    # Cada 30 minutos. GitHub Actions cron usa UTC.
+    - cron: "*/30 * * * *"
+  workflow_dispatch: {}
+
+jobs:
+  trigger-feed:
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    steps:
+      - name: Hit generate-feed endpoint
+        env:
+          CRON_SECRET: ${{ secrets.CRON_SECRET }}
+          SITE_URL: https://xepe-bet-botellorodrigo97-3285s-projects.vercel.app
+        run: |
+          set -e
+          echo "→ Disparando generate-feed en ${SITE_URL}"
+          STATUS=$(curl -sS -o /tmp/resp.json -w "%{http_code}" \
+            -X POST "${SITE_URL}/api/cron/generate-feed" \
+            -H "Authorization: Bearer ${CRON_SECRET}" \
+            --max-time 90 || echo "000")
+          echo "HTTP ${STATUS}"
+          cat /tmp/resp.json | head -c 400 || true
+          echo ""
+          if [ "${STATUS}" != "200" ]; then
+            echo "::warning::Cron devolvio HTTP ${STATUS}, revisar el endpoint"
+            exit 1
+          fi
