@@ -6,6 +6,20 @@ import { revalidatePath } from 'next/cache'
 import { deductCredits, addCredits } from '@/lib/credits'
 import { MIN_BET, MAX_BET } from '@/lib/constants'
 import { generateRelatorMessage } from '@/lib/relator/generate-message'
+import { getCasinoRachaMalaUsuario } from '@/features/relator/stats'
+
+// "Venía perdiendo X seguidas" si aplica — para cashouts/wins que cortan una racha mala.
+async function rachaCasinoQuiebreSnippet(userId: string): Promise<string> {
+  try {
+    // Llamar ANTES del recordCasinoSession del win actual: cuenta sesiones previas.
+    // Si el user venia con 3+ derrotas y este win las corta, el dato es jugoso.
+    const streak = await getCasinoRachaMalaUsuario(userId)
+    if (streak >= 3) return ` Venía perdiendo ${streak} seguidas, le cortó la mala.`
+    return ''
+  } catch {
+    return ''
+  }
+}
 
 // Umbrales para que el Relator narre eventos del casino.
 // Bajos en testing — subir cuando la plataforma tenga mas users.
@@ -127,13 +141,18 @@ export async function playSlots() {
     await addCredits(user.id, payout, 'casino_win', `Slots gano $${payout}`)
   }
 
-  // Relator: slots con payout grande (s3 o mejor)
+  // Relator: slots con payout grande (s3 o mejor). Le adjunta el quiebre de
+  // racha mala si venia perdiendo 3+ partidas. Llamado ANTES de recordCasinoSession
+  // — la query cuenta solo sesiones previas.
   if (payout >= RELATOR_SLOTS_MIN_PAYOUT) {
-    void generateRelatorMessage({
-      kind: 'flash',
-      userId: user.id,
-      context: `{user} pegó la línea en Slots y se llevó $${payout}.`,
-    })
+    void (async () => {
+      const racha = await rachaCasinoQuiebreSnippet(user.id)
+      await generateRelatorMessage({
+        kind: 'flash',
+        userId: user.id,
+        context: `{user} pegó la línea en Slots y se llevó $${payout}.${racha}`,
+      })
+    })()
   }
 
   // Tracking PnL — siempre insertamos, gane o pierda
@@ -326,13 +345,16 @@ export async function cashoutPenalty(sessionId: string) {
 
   await addCredits(user.id, payout, 'casino_win', `Penales retiro con ${session.goals_scored} gol(es), gano $${payout}`)
 
-  // Relator: cashout grande de penales
+  // Relator: cashout grande de penales (+ snippet de racha mala quebrada)
   if (payout >= RELATOR_PENALTY_MIN_PAYOUT) {
-    void generateRelatorMessage({
-      kind: 'flash',
-      userId: user.id,
-      context: `{user} clavó ${session.goals_scored} penal${session.goals_scored > 1 ? 'es' : ''} seguidos y se retiró con $${payout} (×${multiplier}).`,
-    })
+    void (async () => {
+      const racha = await rachaCasinoQuiebreSnippet(user.id)
+      await generateRelatorMessage({
+        kind: 'flash',
+        userId: user.id,
+        context: `{user} clavó ${session.goals_scored} penal${session.goals_scored > 1 ? 'es' : ''} seguidos y se retiró con $${payout} (×${multiplier}).${racha}`,
+      })
+    })()
   }
 
   // Persist payout en la sesión
@@ -703,13 +725,16 @@ export async function cashoutMines(sessionId: string) {
     await addCredits(user.id, payout, 'casino_win', `Cancha Minada x${multiplier}, gano $${payout}`)
   }
 
-  // Relator: cashout con multiplier alto en mines
+  // Relator: cashout con multiplier alto en mines (+ snippet de racha mala quebrada)
   if (multiplier >= RELATOR_MINES_MIN_MULTIPLIER && payout > 0) {
-    void generateRelatorMessage({
-      kind: 'flash',
-      userId: user.id,
-      context: `{user} esquivó ${safeRevealed.length} celdas en Cancha Minada (×${multiplier.toFixed(2)}) y se llevó $${payout}.`,
-    })
+    void (async () => {
+      const racha = await rachaCasinoQuiebreSnippet(user.id)
+      await generateRelatorMessage({
+        kind: 'flash',
+        userId: user.id,
+        context: `{user} esquivó ${safeRevealed.length} celdas en Cancha Minada (×${multiplier.toFixed(2)}) y se llevó $${payout}.${racha}`,
+      })
+    })()
   }
 
   await admin

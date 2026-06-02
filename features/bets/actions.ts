@@ -15,6 +15,7 @@ import {
 import { calculateCashOut } from '@/lib/utils/cash-out'
 import { resolveServerOdds, oddsWithinTolerance } from '@/lib/utils/resolve-pick-odds'
 import { generateRelatorMessage } from '@/lib/relator/generate-message'
+import { getRachaUsuario } from '@/features/relator/stats'
 import type { BetInput, ParlayInput } from './types'
 
 // Umbrales para que el Relator no spamee con cada accion chica.
@@ -27,6 +28,19 @@ function extractTeamName(raw: unknown): string {
   if (!raw) return '?'
   if (Array.isArray(raw)) return (raw[0] as { name?: string })?.name ?? '?'
   return (raw as { name?: string }).name ?? '?'
+}
+
+// Devuelve un snippet de racha listo para concatenar al context del Relator.
+// "" si no hay racha relevante. La query es liviana (1 SELECT). Falla cerrada.
+async function buildRachaSnippet(userId: string): Promise<string> {
+  try {
+    const { won, lost } = await getRachaUsuario(userId)
+    if (won >= 3) return ` Lleva ${won} wins seguidos esta semana.`
+    if (lost >= 3) return ` Viene de ${lost} derrotas al hilo, sigue firme.`
+    return ''
+  } catch {
+    return ''
+  }
 }
 
 async function getAuthUser() {
@@ -118,7 +132,8 @@ export async function placeBet(input: BetInput) {
     return { error: mapBetErrorCode(result.error_code) }
   }
 
-  // Relator: si la apuesta es importante ($50+), dispara mensaje fire-and-forget
+  // Relator: si la apuesta es importante, dispara mensaje fire-and-forget.
+  // Enriquecido con la racha del user si lleva >= 3 wins/losses seguidos.
   if (input.amount >= RELATOR_MIN_BET) {
     const homeName = extractTeamName(match.home_team)
     const awayName = extractTeamName(match.away_team)
@@ -127,11 +142,14 @@ export async function placeBet(input: BetInput) {
       : input.pick === 'away' || input.pick === '2'
       ? `${awayName} gana`
       : 'Empate'
-    void generateRelatorMessage({
-      kind: 'flash',
-      userId: user.id,
-      context: `{user} acaba de apostar $${input.amount} a "${pickLabel}" en ${homeName} vs ${awayName}, cuota x${serverOdds}. Premio potencial $${result.potential_payout}.`,
-    })
+    void (async () => {
+      const racha = await buildRachaSnippet(user.id)
+      await generateRelatorMessage({
+        kind: 'flash',
+        userId: user.id,
+        context: `{user} acaba de apostar $${input.amount} a "${pickLabel}" en ${homeName} vs ${awayName}, cuota x${serverOdds}. Premio potencial $${result.potential_payout}.${racha}`,
+      })
+    })()
   }
 
   revalidatePath('/')
@@ -199,16 +217,19 @@ export async function cashOutBet(betId: string) {
     return { error: mapBetErrorCode(result.error_code) }
   }
 
-  // Relator: si la ganancia neta del cashout es importante, narra
+  // Relator: si la ganancia neta del cashout es importante, narra (con racha si aplica)
   const gain = cashOutValue - Number(bet.amount)
   if (gain >= RELATOR_MIN_CASHOUT_GAIN) {
     const homeName = extractTeamName(match.home_team)
     const awayName = extractTeamName(match.away_team)
-    void generateRelatorMessage({
-      kind: 'flash',
-      userId: user.id,
-      context: `{user} hizo cashout en ${homeName} vs ${awayName}: apostó $${bet.amount}, retiró $${cashOutValue}. Ganancia neta $${gain.toFixed(0)}.`,
-    })
+    void (async () => {
+      const racha = await buildRachaSnippet(user.id)
+      await generateRelatorMessage({
+        kind: 'flash',
+        userId: user.id,
+        context: `{user} hizo cashout en ${homeName} vs ${awayName}: apostó $${bet.amount}, retiró $${cashOutValue}. Ganancia neta $${gain.toFixed(0)}.${racha}`,
+      })
+    })()
   }
 
   revalidatePath('/')
@@ -284,13 +305,16 @@ export async function placeParlay(input: ParlayInput) {
     return { error: mapBetErrorCode(result.error_code) }
   }
 
-  // Relator: parlays con >= 3 patas son narrables (combinacion ambiciosa)
+  // Relator: parlays con >= 2 patas son narrables (combinacion ambiciosa)
   if (serverLegs.length >= RELATOR_MIN_PARLAY_LEGS) {
-    void generateRelatorMessage({
-      kind: 'flash',
-      userId: user.id,
-      context: `{user} armó un parlay de ${serverLegs.length} patas por $${input.amount}, cuota total x${totalOdds}. Si todas pegan, paga $${result.potential_payout}.`,
-    })
+    void (async () => {
+      const racha = await buildRachaSnippet(user.id)
+      await generateRelatorMessage({
+        kind: 'flash',
+        userId: user.id,
+        context: `{user} armó un parlay de ${serverLegs.length} patas por $${input.amount}, cuota total x${totalOdds}. Si todas pegan, paga $${result.potential_payout}.${racha}`,
+      })
+    })()
   }
 
   revalidatePath('/')

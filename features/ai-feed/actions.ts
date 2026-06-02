@@ -2,6 +2,17 @@
 
 import { createAdminClient } from '@/lib/supabase/admin'
 import { askClaude } from '@/lib/ai/claude'
+import {
+  getCrackDelDia,
+  getQuemadoDelDia,
+  getRachaGanadora,
+  getRachaPerdedora,
+  getParlayArriesgado,
+  getCashOutEpico,
+  getPartidoCaliente,
+  getApostadorMasActivo24h,
+  getCasinoRachaMala,
+} from '@/features/relator/stats'
 
 type PostKind = 'summary' | 'flash' | 'analysis' | 'trivia'
 
@@ -76,6 +87,30 @@ export async function generateDailyFeed(): Promise<{
       .order('created_at', { ascending: false })
       .limit(5)
 
+    // 7) Stats entretenidos (rachas, plata, ranking). Todas devuelven null si
+    //    no hay data suficiente — el spread al final del context las descarta.
+    const [
+      crackDelDia,
+      quemadoDelDia,
+      rachaGanadora,
+      rachaPerdedora,
+      parlayArriesgado,
+      cashOutEpico,
+      partidoCaliente,
+      apostadorActivo,
+      casinoRachaMala,
+    ] = await Promise.all([
+      getCrackDelDia(),
+      getQuemadoDelDia(),
+      getRachaGanadora(),
+      getRachaPerdedora(),
+      getParlayArriesgado(),
+      getCashOutEpico(),
+      getPartidoCaliente(),
+      getApostadorMasActivo24h(),
+      getCasinoRachaMala(),
+    ])
+
     type UserRef = { display_name: string } | null
     type MatchRef = { home: { name: string } | null; away: { name: string } | null } | null
 
@@ -131,20 +166,37 @@ export async function generateDailyFeed(): Promise<{
           partido: match ? `${match.home?.name ?? '?'} vs ${match.away?.name ?? '?'}` : null,
         }
       }),
+      // Datazos: solo se incluyen las claves que tienen data real. Claude no
+      // ve los null, asi evitamos alucinaciones tipo "Nadie ganó hoy".
+      ...(crackDelDia && { crack_del_dia: crackDelDia }),
+      ...(quemadoDelDia && { quemado_del_dia: quemadoDelDia }),
+      ...(rachaGanadora && { racha_ganadora: rachaGanadora }),
+      ...(rachaPerdedora && { racha_perdedora: rachaPerdedora }),
+      ...(parlayArriesgado && { parlay_arriesgado: parlayArriesgado }),
+      ...(cashOutEpico && { cash_out_epico: cashOutEpico }),
+      ...(partidoCaliente && { partido_caliente: partidoCaliente }),
+      ...(apostadorActivo && { apostador_mas_activo_24h: apostadorActivo }),
+      ...(casinoRachaMala && { casino_racha_mala: casinoRachaMala }),
     }
 
-    const system = `Sos un relator deportivo apasionado narrando el Mundial 2026 para una plataforma interna de prode/apuestas virtuales llamada Mundial Betting. Escribis en espanol rioplatense, informal, con humor, sin exagerar el futbolismo.
+    const system = `Sos El Relator: locutor apasionado del Mundial 2026 para Mundial Betting, plataforma interna de prode y apuestas con creditos virtuales. Escribis en espanol rioplatense, picaresco, con chispa, MUY chismoso cuando hay datazos de gente real.
 
-IMPORTANTE: Usa los nombres reales de los usuarios del contexto cuando hables del ranking, de apuestas o predicciones. Ejemplo: "¡Juan Perez sigue firme primero con 1200 puntos!", "¿Sabias que Maria apostó $500 a Brasil vs Morocco?".
+REGLA DE ORO: usa SIEMPRE los nombres reales del contexto. Si el contexto trae "crack_del_dia", "quemado_del_dia", "racha_ganadora", "racha_perdedora", "parlay_arriesgado", "cash_out_epico", "partido_caliente" o "casino_racha_mala", esos son los CHISMES principales y van si o si en los analysis.
 
-Genera exactamente 6 posts cortos (max 140 caracteres cada uno) con esta distribucion:
-- 1 "summary": contexto de los proximos partidos del Mundial
-- 1 "flash": frase energica tipo tweet, como narrando en vivo
-- 2 "analysis": datos concretos del ranking Y de apuestas recientes (usa nombres reales del contexto). Ej: "Fulano lidera el ranking con X pts", "Mengana acaba de apostar $Y a Z"
-- 1 "analysis" tipo chisme: una apuesta grande o curiosa del dia con nombre y monto ("¡Pedro le metió $800 a Alemania!")
-- 1 "trivia": dato historico curioso del Mundial (sin mencionar usuarios)
+NUNCA inventes nombres, montos ni rachas. Si una clave no esta en el contexto, simplemente no la menciones.
 
-Si el contexto viene con pocas apuestas/usuarios (plataforma recien arrancada), igual genera los posts pero reemplaza los de tipo analysis con mensajes de bienvenida ("Recien arrancamos, todavia no hay apuestas") sin inventar nombres que no estan en el contexto.
+Genera EXACTAMENTE 6 posts cortos (max 140 caracteres cada uno) con esta distribucion:
+- 1 "summary": contexto de proximos partidos del Mundial.
+- 1 "flash": frase energica tipo tweet. Si hay "partido_caliente", aprovechalo ("Boca-River local: 12 apostando, 8 a Argentina!"). Si no, narra el arranque del dia.
+- 3 "analysis": cada uno con un chisme distinto. PRIORIDAD de seleccion:
+  1) crack_del_dia o quemado_del_dia ("Maria ya lleva +$420 hoy", "Pedro se quemó $200 en 3 apuestas, sigue firme")
+  2) racha_ganadora o racha_perdedora ("Juan lleva 4 wins seguidos esta semana, no se baja", "Lucia 5 derrotas al hilo, pero no afloja")
+  3) parlay_arriesgado o cash_out_epico ("Carla armó un parlay x42, si pega cobra $2100", "Diego se bajó a tiempo con $380")
+  4) apostador_mas_activo_24h o casino_racha_mala ("Sofía ya metió 7 bets en el día", "Tomás 4 partidas perdidas seguidas en mines")
+  Si quedan menos de 3 chismes, completá con ranking_top5 o apuestas_grandes_hoy. NUNCA repitas el mismo user en dos analysis.
+- 1 "trivia": dato historico curioso del Mundial (sin usuarios, sin numeros de la plataforma).
+
+Resaltá numeros y montos. Usa 1 emoji maximo por mensaje, y solo cuando suma.
 
 Responde ESTRICTAMENTE en formato JSON, sin markdown, sin explicacion, solo el array:
 [
@@ -161,7 +213,7 @@ Responde ESTRICTAMENTE en formato JSON, sin markdown, sin explicacion, solo el a
     const raw = await askClaude({
       system,
       messages: [{ role: 'user', content: userMsg }],
-      maxTokens: 1200,
+      maxTokens: 1400,
     })
 
     // Parsear. Claude a veces devuelve el JSON dentro de ```json ... ```
