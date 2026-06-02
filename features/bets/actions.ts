@@ -17,10 +17,11 @@ import { resolveServerOdds, oddsWithinTolerance } from '@/lib/utils/resolve-pick
 import { generateRelatorMessage } from '@/lib/relator/generate-message'
 import type { BetInput, ParlayInput } from './types'
 
-// Umbrales para que el Relator no spamee con cada apuesta chica.
-const RELATOR_MIN_BET = 50           // bets > $50 narra
-const RELATOR_MIN_CASHOUT_GAIN = 30  // cashouts con ganancia neta > $30 narra
-const RELATOR_MIN_PARLAY_LEGS = 3    // parlays >= 3 legs narra
+// Umbrales para que el Relator no spamee con cada accion chica.
+// Bajos para una plataforma con pocos users en testing — subir cuando crezca.
+const RELATOR_MIN_BET = 20           // bets >= $20 narran
+const RELATOR_MIN_CASHOUT_GAIN = 10  // cashout con ganancia neta >= $10 narra
+const RELATOR_MIN_PARLAY_LEGS = 2    // todos los parlays narran (min es 2)
 
 function extractTeamName(raw: unknown): string {
   if (!raw) return '?'

@@ -7,10 +7,11 @@ import { deductCredits, addCredits } from '@/lib/credits'
 import { MIN_BET, MAX_BET } from '@/lib/constants'
 import { generateRelatorMessage } from '@/lib/relator/generate-message'
 
-// Umbrales para que el Relator narre solo eventos importantes del casino.
-const RELATOR_PENALTY_MIN_PAYOUT = 100  // payout >= $100
-const RELATOR_MINES_MIN_MULTIPLIER = 5  // multiplier x5+
-const RELATOR_SLOTS_MIN_PAYOUT = 300    // payout fijo grande (s3 o mejor)
+// Umbrales para que el Relator narre eventos del casino.
+// Bajos en testing — subir cuando la plataforma tenga mas users.
+const RELATOR_PENALTY_MIN_PAYOUT = 30   // cashout penales con payout >= $30
+const RELATOR_MINES_MIN_MULTIPLIER = 1.5 // multiplier x1.5+
+const RELATOR_SLOTS_MIN_PAYOUT = 50      // slots con premio >= $50
 import {
   FELIPE_ROOMS,
   FELIPE_CHIPS,

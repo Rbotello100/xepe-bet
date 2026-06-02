@@ -49,8 +49,8 @@ export function MiniLeaderboard({
                   <em className="not-italic font-normal text-accent-deep"> · tú</em>
                 )}
               </span>
-              <span className="w-[46px] text-right font-mono text-[13.5px] font-bold text-strong">
-                {e.total_points.toLocaleString('es-CL')}
+              <span className="w-[64px] text-right font-mono text-[13.5px] font-bold text-strong">
+                ${Number(e.credits).toLocaleString('es-CL')}
               </span>
             </div>
           )
