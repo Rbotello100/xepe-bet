@@ -5,6 +5,12 @@ import { createAdminClient } from '@/lib/supabase/admin'
 import { revalidatePath } from 'next/cache'
 import { deductCredits, addCredits } from '@/lib/credits'
 import { MIN_BET, MAX_BET } from '@/lib/constants'
+import { generateRelatorMessage } from '@/lib/relator/generate-message'
+
+// Umbrales para que el Relator narre solo eventos importantes del casino.
+const RELATOR_PENALTY_MIN_PAYOUT = 100  // payout >= $100
+const RELATOR_MINES_MIN_MULTIPLIER = 5  // multiplier x5+
+const RELATOR_SLOTS_MIN_PAYOUT = 300    // payout fijo grande (s3 o mejor)
 import {
   FELIPE_ROOMS,
   FELIPE_CHIPS,
@@ -118,6 +124,15 @@ export async function playSlots() {
 
   if (payout > 0) {
     await addCredits(user.id, payout, 'casino_win', `Slots gano $${payout}`)
+  }
+
+  // Relator: slots con payout grande (s3 o mejor)
+  if (payout >= RELATOR_SLOTS_MIN_PAYOUT) {
+    void generateRelatorMessage({
+      kind: 'flash',
+      userId: user.id,
+      context: `{user} pegó la línea en Slots y se llevó $${payout}.`,
+    })
   }
 
   // Tracking PnL — siempre insertamos, gane o pierda
@@ -309,6 +324,15 @@ export async function cashoutPenalty(sessionId: string) {
   const payout = Math.round(Number(session.bet_amount) * multiplier)
 
   await addCredits(user.id, payout, 'casino_win', `Penales retiro con ${session.goals_scored} gol(es), gano $${payout}`)
+
+  // Relator: cashout grande de penales
+  if (payout >= RELATOR_PENALTY_MIN_PAYOUT) {
+    void generateRelatorMessage({
+      kind: 'flash',
+      userId: user.id,
+      context: `{user} clavó ${session.goals_scored} penal${session.goals_scored > 1 ? 'es' : ''} seguidos y se retiró con $${payout} (×${multiplier}).`,
+    })
+  }
 
   // Persist payout en la sesión
   await admin
@@ -676,6 +700,15 @@ export async function cashoutMines(sessionId: string) {
 
   if (payout > 0) {
     await addCredits(user.id, payout, 'casino_win', `Cancha Minada x${multiplier}, gano $${payout}`)
+  }
+
+  // Relator: cashout con multiplier alto en mines
+  if (multiplier >= RELATOR_MINES_MIN_MULTIPLIER && payout > 0) {
+    void generateRelatorMessage({
+      kind: 'flash',
+      userId: user.id,
+      context: `{user} esquivó ${safeRevealed.length} celdas en Cancha Minada (×${multiplier.toFixed(2)}) y se llevó $${payout}.`,
+    })
   }
 
   await admin

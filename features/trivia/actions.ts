@@ -4,6 +4,7 @@ import { createServerClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { revalidatePath } from 'next/cache'
 import { TRIVIA_REWARDS } from '@/lib/constants'
+import { generateRelatorMessage } from '@/lib/relator/generate-message'
 import { addCredits } from '@/lib/credits'
 
 /**
@@ -107,6 +108,15 @@ export async function submitTrivia(answers: TriviaAnswerInput[]) {
       : `respondio ${correctAnswers}/${totalQuestions} en la trivia`,
     metadata: { correct: correctAnswers, total: totalQuestions, credits: creditsEarned },
   })
+
+  // Relator: trivia perfecta es narrable
+  if (allCorrect) {
+    void generateRelatorMessage({
+      kind: 'flash',
+      userId: user.id,
+      context: `{user} acaba de hacer una trivia perfecta ${correctAnswers}/${totalQuestions} y se llevó $${creditsEarned}.`,
+    })
+  }
 
   revalidatePath('/trivia')
   return { success: true, correct_answers: correctAnswers, total_questions: totalQuestions, credits_earned: creditsEarned }

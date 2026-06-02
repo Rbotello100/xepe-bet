@@ -14,7 +14,19 @@ import {
 } from '@/lib/constants'
 import { calculateCashOut } from '@/lib/utils/cash-out'
 import { resolveServerOdds, oddsWithinTolerance } from '@/lib/utils/resolve-pick-odds'
+import { generateRelatorMessage } from '@/lib/relator/generate-message'
 import type { BetInput, ParlayInput } from './types'
+
+// Umbrales para que el Relator no spamee con cada apuesta chica.
+const RELATOR_MIN_BET = 50           // bets > $50 narra
+const RELATOR_MIN_CASHOUT_GAIN = 30  // cashouts con ganancia neta > $30 narra
+const RELATOR_MIN_PARLAY_LEGS = 3    // parlays >= 3 legs narra
+
+function extractTeamName(raw: unknown): string {
+  if (!raw) return '?'
+  if (Array.isArray(raw)) return (raw[0] as { name?: string })?.name ?? '?'
+  return (raw as { name?: string }).name ?? '?'
+}
 
 async function getAuthUser() {
   const supabase = await createServerClient()
@@ -66,7 +78,7 @@ export async function placeBet(input: BetInput) {
   // La RPC re-valida match abierto dentro de la TX (snapshot en commit).
   const { data: match } = await admin
     .from('matches')
-    .select('starts_at, status, odds_home, odds_draw, odds_away')
+    .select('starts_at, status, odds_home, odds_draw, odds_away, home_team:teams!home_team_id(name), away_team:teams!away_team_id(name)')
     .eq('id', input.match_id)
     .single()
   if (!match) return { error: 'Partido no encontrado' }
@@ -105,6 +117,22 @@ export async function placeBet(input: BetInput) {
     return { error: mapBetErrorCode(result.error_code) }
   }
 
+  // Relator: si la apuesta es importante ($50+), dispara mensaje fire-and-forget
+  if (input.amount >= RELATOR_MIN_BET) {
+    const homeName = extractTeamName(match.home_team)
+    const awayName = extractTeamName(match.away_team)
+    const pickLabel = input.pick === 'home' || input.pick === '1'
+      ? `${homeName} gana`
+      : input.pick === 'away' || input.pick === '2'
+      ? `${awayName} gana`
+      : 'Empate'
+    void generateRelatorMessage({
+      kind: 'flash',
+      userId: user.id,
+      context: `{user} acaba de apostar $${input.amount} a "${pickLabel}" en ${homeName} vs ${awayName}, cuota x${serverOdds}. Premio potencial $${result.potential_payout}.`,
+    })
+  }
+
   revalidatePath('/')
   return {
     success: true,
@@ -119,14 +147,23 @@ export async function cashOutBet(betId: string) {
 
   const admin = db()
   const { data: bet } = await admin.from('bets')
-    .select('odds_at_placement, amount, status, match:matches!match_id(starts_at, status, odds_home, odds_draw, odds_away), pick')
+    .select('odds_at_placement, amount, status, match:matches!match_id(starts_at, status, odds_home, odds_draw, odds_away, home_team:teams!home_team_id(name), away_team:teams!away_team_id(name)), pick')
     .eq('id', betId).eq('user_id', user.id).eq('status', 'pending').single()
   if (!bet) return { error: 'Apuesta no encontrada' }
 
   // Supabase devuelve el match como array cuando es un join 1:N; aca es 1:1, asi
   // que tomamos el primero. El cast pasa por unknown porque los tipos generados
   // declaran la relacion como array.
-  const matchRaw = bet.match as unknown as { starts_at: string; status: string; odds_home: number; odds_draw: number; odds_away: number } | { starts_at: string; status: string; odds_home: number; odds_draw: number; odds_away: number }[]
+  type MatchJoined = {
+    starts_at: string
+    status: string
+    odds_home: number
+    odds_draw: number
+    odds_away: number
+    home_team?: { name: string } | { name: string }[]
+    away_team?: { name: string } | { name: string }[]
+  }
+  const matchRaw = bet.match as unknown as MatchJoined | MatchJoined[]
   const match = Array.isArray(matchRaw) ? matchRaw[0] : matchRaw
   if (!match) return { error: 'Partido no encontrado' }
   const matchError = validateMatchOpen(match)
@@ -159,6 +196,18 @@ export async function cashOutBet(betId: string) {
   const result = data[0] as { success: boolean; new_balance: number | null; error_code: string | null }
   if (!result.success) {
     return { error: mapBetErrorCode(result.error_code) }
+  }
+
+  // Relator: si la ganancia neta del cashout es importante, narra
+  const gain = cashOutValue - Number(bet.amount)
+  if (gain >= RELATOR_MIN_CASHOUT_GAIN) {
+    const homeName = extractTeamName(match.home_team)
+    const awayName = extractTeamName(match.away_team)
+    void generateRelatorMessage({
+      kind: 'flash',
+      userId: user.id,
+      context: `{user} hizo cashout en ${homeName} vs ${awayName}: apostó $${bet.amount}, retiró $${cashOutValue}. Ganancia neta $${gain.toFixed(0)}.`,
+    })
   }
 
   revalidatePath('/')
@@ -232,6 +281,15 @@ export async function placeParlay(input: ParlayInput) {
   }
   if (!result.success) {
     return { error: mapBetErrorCode(result.error_code) }
+  }
+
+  // Relator: parlays con >= 3 patas son narrables (combinacion ambiciosa)
+  if (serverLegs.length >= RELATOR_MIN_PARLAY_LEGS) {
+    void generateRelatorMessage({
+      kind: 'flash',
+      userId: user.id,
+      context: `{user} armó un parlay de ${serverLegs.length} patas por $${input.amount}, cuota total x${totalOdds}. Si todas pegan, paga $${result.potential_payout}.`,
+    })
   }
 
   revalidatePath('/')
