@@ -181,11 +181,13 @@ export async function startPenaltyGame(bet: number) {
     .eq('user_id', user.id)
     .eq('status', 'active')
 
+  // Free play: NO descontamos del balance, pero registramos el bet real
+  // (bet_amount > 0, was_free=true) para que el cashout pague proporcional
+  // al multiplier. La jugada gratis es bonus, no demo.
   const free = await canPlayToday(user.id, 'penales')
-  const cost = free ? 0 : bet
 
-  if (cost > 0) {
-    const result = await deductCredits(user.id, cost, 'casino_bet', `Penales apuesta $${cost}`)
+  if (!free) {
+    const result = await deductCredits(user.id, bet, 'casino_bet', `Penales apuesta $${bet}`)
     if (!result.success) return { error: result.error ?? 'Creditos insuficientes' }
   }
 
@@ -193,9 +195,10 @@ export async function startPenaltyGame(bet: number) {
     .from('penalty_sessions')
     .insert({
       user_id: user.id,
-      bet_amount: cost,
+      bet_amount: bet,
       goals_scored: 0,
       status: 'active',
+      was_free: free,
     })
     .select('id')
     .single()
@@ -252,7 +255,7 @@ export async function takePenaltyKick(sessionId: string, kickedZone: number) {
 
     const multiplier = getPenaltyMultiplier(newGoals)
     const nextProb = newGoals < GK_COVERAGE.length ? getPenaltyNextProb(newGoals) : 0
-    const isFree = Number(session.bet_amount) === 0
+    const isFree = session.was_free === true
     return { isGoal: true, coveredZones, kickedZone, multiplier, nextProb, sessionId, goalsScored: newGoals, isFree }
   }
 
@@ -279,7 +282,7 @@ export async function takePenaltyKick(sessionId: string, kickedZone: number) {
   }
 
   revalidatePath('/casino')
-  const isFreeMiss = Number(session.bet_amount) === 0
+  const isFreeMiss = session.was_free === true
   return { isGoal: false, coveredZones, kickedZone, multiplier: 0, nextProb: 0, sessionId, isFree: isFreeMiss }
 }
 
@@ -325,7 +328,7 @@ export async function cashoutPenalty(sessionId: string) {
   })
 
   revalidatePath('/casino')
-  const isFree = Number(session.bet_amount) === 0
+  const isFree = session.was_free === true
   return { payout, multiplier, goalsScored: session.goals_scored, isFree }
 }
 
@@ -516,11 +519,13 @@ export async function startMines(mineCount: number) {
     .eq('user_id', user.id)
     .eq('status', 'active')
 
+  // Free play: NO descontamos del balance pero bet_amount=MINES_COST igual,
+  // para que el cashout pague proporcional al multiplier. was_free=true marca
+  // la sesion como bonus (la UI lo muestra distinto).
   const free = await canPlayToday(user.id, 'minas')
-  const cost = free ? 0 : MINES_COST
 
-  if (cost > 0) {
-    const result = await deductCredits(user.id, cost, 'casino_bet', `Cancha Minada $${cost}`)
+  if (!free) {
+    const result = await deductCredits(user.id, MINES_COST, 'casino_bet', `Cancha Minada $${MINES_COST}`)
     if (!result.success) return { error: result.error ?? 'Creditos insuficientes' }
   }
 
@@ -536,12 +541,13 @@ export async function startMines(mineCount: number) {
     .from('mines_sessions')
     .insert({
       user_id: user.id,
-      bet_amount: cost,
+      bet_amount: MINES_COST,
       mine_count: mineCount,
       mine_positions: minePositions,
       safe_revealed: [],
       status: 'active',
       current_multiplier: 1.0,
+      was_free: free,
     })
     .select('id')
     .single()
@@ -600,7 +606,7 @@ export async function revealMineCell(sessionId: string, cellIndex: number) {
       })
     }
 
-    const isFreeBust = Number(session.bet_amount) === 0
+    const isFreeBust = session.was_free === true
     return {
       isMine: true,
       cellIndex,
@@ -634,7 +640,7 @@ export async function revealMineCell(sessionId: string, cellIndex: number) {
     return await cashoutMines(sessionId)
   }
 
-  const isFree = Number(session.bet_amount) === 0
+  const isFree = session.was_free === true
   return {
     isMine: false,
     cellIndex,
@@ -691,7 +697,7 @@ export async function cashoutMines(sessionId: string) {
 
   revalidatePath('/casino')
 
-  const isFree = Number(session.bet_amount) === 0
+  const isFree = session.was_free === true
   return {
     isMine: false,
     cashout: true,

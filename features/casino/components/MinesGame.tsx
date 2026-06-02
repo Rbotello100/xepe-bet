@@ -216,7 +216,7 @@ export function MinesGame() {
           <p className="text-xl font-black text-red-400">¡TARJETA ROJA!</p>
           <p className="text-sm text-slate-400">
             Llegaste a ×{multiplier.toFixed(2)} con {safeRevealedCount} celdas.
-            {isFree ? ' Era jugada gratis, no perdiste créditos.' : ` Perdiste $${COST}.`}
+            {isFree ? ' Era jugada gratis — no perdiste créditos.' : ` Perdiste $${COST}.`}
           </p>
           <Button onClick={reset} variant="secondary" size="sm">Jugar de nuevo</Button>
         </div>
@@ -225,15 +225,13 @@ export function MinesGame() {
       {phase === 'cashed_out' && (
         <div className="text-center bg-[var(--accent)]/10 border border-[var(--accent)]/40 rounded-xl py-4 space-y-2">
           <p className="text-3xl">🎉</p>
-          {payout > 0 ? (
-            <p className="text-xl font-black text-[var(--accent)]">+${payout.toLocaleString()}</p>
-          ) : (
-            <p className="text-xl font-black text-[var(--accent)]">¡Ganaste!</p>
-          )}
+          <p className="text-xl font-black text-[var(--accent)]">+${payout.toLocaleString()}</p>
           <p className="text-sm text-slate-400">
             {safeRevealedCount} celdas reveladas · ×{multiplier.toFixed(2)}
-            {payout === 0 && isFree && <><br /><span className="text-xs text-slate-500">Jugada del día gratis — sin créditos</span></>}
           </p>
+          {isFree && (
+            <p className="text-xs text-[var(--casino-yellow)]">🎁 Jugada del día gratis — ¡bonus!</p>
+          )}
           <Button onClick={reset} variant="secondary" size="sm">Jugar de nuevo</Button>
         </div>
       )}

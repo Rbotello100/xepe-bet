@@ -175,29 +175,36 @@ export function PenaltyGame() {
   }
 
   // ——— FINISHED ———
-  // 3 estados:
-  //  - payout > 0:                          ganó plata (paid out)
-  //  - payout === 0 && isFree && goals > 0: ganó pero free play (sin créditos)
-  //  - else:                                 perdió (atajaron)
+  // 4 estados:
+  //  - payout > 0 && isFree:  gano gratis Y le pagó (bonus por jugada del día)
+  //  - payout > 0:            gano normal (pagó su bet)
+  //  - payout === 0 && isFree: lo atajaron en free play (sin perder créditos)
+  //  - payout === 0:          lo atajaron normal (perdió su bet)
   if (phase === 'finished') {
-    const wonFree = payout === 0 && isFree && goalsScored > 0
+    const won = payout > 0
     return (
       <Card className="text-center py-10 space-y-4">
-        <p className="text-5xl">{payout > 0 || wonFree ? '🎉' : '😔'}</p>
-        {payout > 0 ? (
+        <p className="text-5xl">{won ? '🎉' : '😔'}</p>
+        {won && isFree ? (
+          <>
+            <h2 className="text-3xl font-black text-white">+${payout.toLocaleString()}</h2>
+            <p className="text-sm text-[var(--accent)]">
+              {goalsScored} gol{goalsScored > 1 ? 'es' : ''} · Multiplicador ×{multiplier}
+            </p>
+            <p className="text-xs text-[var(--casino-yellow)]">🎁 Jugada del día gratis — ¡bonus!</p>
+          </>
+        ) : won ? (
           <>
             <h2 className="text-3xl font-black text-white">+${payout.toLocaleString()}</h2>
             <p className="text-sm text-[var(--accent)]">
               {goalsScored} gol{goalsScored > 1 ? 'es' : ''} · Multiplicador ×{multiplier}
             </p>
           </>
-        ) : wonFree ? (
+        ) : isFree ? (
           <>
-            <h2 className="text-3xl font-black text-white">¡Ganaste!</h2>
-            <p className="text-sm text-[var(--accent)]">
-              {goalsScored} gol{goalsScored > 1 ? 'es' : ''} · Multiplicador ×{multiplier}
-            </p>
-            <p className="text-xs text-slate-500">Jugada del día gratis — sin créditos esta vez</p>
+            <h2 className="text-3xl font-black text-white">Perdiste</h2>
+            <p className="text-sm text-slate-400">El arquero la atajo.</p>
+            <p className="text-xs text-slate-500">Era jugada gratis — no perdiste créditos</p>
           </>
         ) : (
           <>
