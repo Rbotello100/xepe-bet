@@ -1,13 +1,27 @@
 @import "tailwindcss";
 
 :root {
-  --background: #0A0E1A;
-  --foreground: #E8EEFC;
-  --card: #131829;
-  --card-border: #1F2740;
-  --accent: #00E676;
-  --accent-hover: #00C853;
-  --muted: #94a3b8;
+  /* ---- Surfaces (paleta indigo Xepelin) ---- */
+  --background: #0A0E22;
+  --foreground: #EAECF7;
+  --card: #141A33;
+  --card-border: #26304F;
+  --sunken: #0E1428;
+  /* ---- Accent: indigo Xepelin ---- */
+  --accent: #6D74F4;
+  --accent-hover: #585EEE;
+  --accent-deep: #A9AEFF;
+  --accent-soft: rgba(85, 94, 238, .14);
+  /* ---- Text ---- */
+  --muted: #8A90B2;
+  --subtle: #5C6488;
+  --strong: #F7F8FF;
+  /* ---- Semánticos ---- */
+  --win: #3DDC84;
+  --gold: #F4B740;
+  --cyan: #56C7F0;
+  --danger: #FF6B6B;
+  /* ---- Casino extras (legacy, sin cambios) ---- */
   --casino-red: #00E676;
   --casino-blue: #0A0E1A;
   --casino-purple: #5B2D8B;
@@ -22,9 +36,18 @@
   --color-foreground: var(--foreground);
   --color-card: var(--card);
   --color-card-border: var(--card-border);
+  --color-sunken: var(--sunken);
   --color-accent: var(--accent);
   --color-accent-hover: var(--accent-hover);
+  --color-accent-deep: var(--accent-deep);
+  --color-accent-soft: var(--accent-soft);
   --color-muted: var(--muted);
+  --color-subtle: var(--subtle);
+  --color-strong: var(--strong);
+  --color-win: var(--win);
+  --color-gold: var(--gold);
+  --color-cyan: var(--cyan);
+  --color-danger: var(--danger);
   --color-casino-red: var(--casino-red);
   --color-casino-blue: var(--casino-blue);
   --color-casino-purple: var(--casino-purple);
@@ -47,8 +70,8 @@
 
 body {
   background:
-    radial-gradient(circle at 15% 20%, rgba(0, 230, 118, 0.06) 0%, transparent 40%),
-    radial-gradient(circle at 85% 80%, rgba(0, 229, 255, 0.05) 0%, transparent 40%),
+    radial-gradient(circle at 15% 20%, rgba(109, 116, 244, 0.07) 0%, transparent 40%),
+    radial-gradient(circle at 85% 80%, rgba(86, 199, 240, 0.04) 0%, transparent 40%),
     var(--background);
   color: var(--foreground);
   font-family: var(--font-sans, system-ui, -apple-system, sans-serif);
@@ -65,6 +88,33 @@ body::before {
   z-index: 0;
 }
 
+/* ============================================================
+   Animaciones del redesign (handoff v2)
+   Regla: el estado base SIEMPRE es visible. Entradas animan solo
+   por transform, nunca desde opacity:0 (para no quedar invisible
+   si la animacion no corre).
+   ============================================================ */
+@keyframes msg-in     { from { transform: translateY(-7px); } to { transform: none; } }
+@keyframes live-pulse { 0%, 100% { opacity: 1; transform: scale(1); } 50% { opacity: .5; transform: scale(1.35); } }
+@keyframes typing     { 0%, 60%, 100% { opacity: .3; transform: translateY(0); } 30% { opacity: 1; transform: translateY(-3px); } }
+
+/* Relator avatar */
+@keyframes r-mouth { from { transform: scaleY(.28); } to { transform: scaleY(1.25); } }
+@keyframes r-blink { 0%, 93%, 100% { transform: scaleY(1); } 96% { transform: scaleY(.12); } }
+@keyframes r-bob   { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-1.2px); } }
+
+.r-head, .r-mouth, .r-eye { transform-box: fill-box; transform-origin: center; }
+.r-eye { animation: r-blink 4.5s ease-in-out infinite; }
+.relator-avatar.is-talking .r-mouth { animation: r-mouth .2s steps(2, jump-none) infinite alternate; }
+.relator-avatar.is-talking .r-head  { animation: r-bob .5s ease-in-out infinite; }
+
+@media (prefers-reduced-motion: reduce) {
+  .r-eye, .relator-avatar.is-talking .r-mouth, .relator-avatar.is-talking .r-head { animation: none !important; }
+}
+
+/* ============================================================
+   Animaciones legacy (casino games) — sin cambios
+   ============================================================ */
 @keyframes gk-idle {
   0%, 100% { transform: translateY(0); }
   50% { transform: translateY(-4px); }
@@ -92,13 +142,13 @@ body::before {
 }
 
 @keyframes win-glow {
-  0%, 100% { box-shadow: 0 0 0 0 rgba(255, 214, 10, 0.7); }
-  50% { box-shadow: 0 0 0 10px rgba(255, 214, 10, 0); }
+  0%, 100% { box-shadow: 0 0 0 0 rgba(244, 183, 64, 0.7); }
+  50% { box-shadow: 0 0 0 10px rgba(244, 183, 64, 0); }
 }
 
 @keyframes glow-pulse {
-  0%, 100% { box-shadow: 0 0 0 0 rgba(0, 230, 118, 0.4), 0 0 20px rgba(0, 230, 118, 0.2); }
-  50% { box-shadow: 0 0 0 4px rgba(0, 230, 118, 0), 0 0 30px rgba(0, 230, 118, 0.4); }
+  0%, 100% { box-shadow: 0 0 0 0 rgba(109, 116, 244, 0.4), 0 0 20px rgba(109, 116, 244, 0.2); }
+  50% { box-shadow: 0 0 0 4px rgba(109, 116, 244, 0), 0 0 30px rgba(109, 116, 244, 0.4); }
 }
 
 @keyframes shimmer {

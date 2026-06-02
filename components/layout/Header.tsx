@@ -1,59 +1,87 @@
 import Link from 'next/link'
-import Image from 'next/image'
 
 interface HeaderProps {
   user?: { display_name: string; avatar_url: string | null; credits: number; total_points: number } | null
+  active?: string
 }
 
-export function Header({ user }: HeaderProps) {
+const NAV = [
+  { label: 'Partidos', href: '/' },
+  { label: 'Ranking', href: '/leaderboard' },
+  { label: 'Predicciones', href: '/predictions' },
+  { label: 'Apuestas', href: '/bets' },
+  { label: 'Trivia', href: '/trivia' },
+  { label: 'Casino', href: '/casino' },
+]
+
+export function Header({ user, active = '/' }: HeaderProps) {
   return (
-    <header className="sticky top-0 z-50 border-b border-slate-700 bg-slate-900/95 backdrop-blur">
-      <div className="mx-auto flex h-14 max-w-4xl items-center justify-between px-4">
-        <Link href="/" className="flex items-center">
-          <Image
-            src="/xepebet-logo.png"
-            alt="Xepe Bet"
-            width={320}
-            height={180}
-            priority
-            className="h-10 w-auto rounded-md"
-          />
+    <header className="sticky top-0 z-40 border-b border-card-border bg-[color-mix(in_oklab,var(--color-background)_80%,transparent)] backdrop-blur-[14px]">
+      <div className="mx-auto flex h-16 max-w-[1500px] items-center gap-8 px-6">
+        {/* LOGO XEPEBET (branding nuevo) */}
+        <Link href="/" className="flex items-center gap-2.5 text-xl font-extrabold tracking-tight">
+          <span className="grid h-8 w-8 place-items-center rounded-[9px] bg-[linear-gradient(135deg,var(--color-accent),var(--color-accent-deep))] text-base text-background shadow-[0_4px_16px_color-mix(in_oklab,var(--color-accent)_45%,transparent)]">
+            ✦
+          </span>
+          <span className="text-strong">
+            XEPE<span className="text-accent-deep">BET</span>
+          </span>
         </Link>
 
-        <nav className="hidden md:flex items-center gap-6 text-sm text-slate-400">
-          <Link href="/" className="hover:text-white transition-colors">Partidos</Link>
-          <Link href="/leaderboard" className="hover:text-white transition-colors">Ranking</Link>
-          {user && (
-            <>
-              <Link href="/predictions" className="hover:text-white transition-colors">Predicciones</Link>
-              <Link href="/bets" className="hover:text-white transition-colors">Apuestas</Link>
-              <Link href="/trivia" className="hover:text-white transition-colors">Trivia</Link>
-              <Link href="/casino" className="hover:text-white transition-colors">Casino</Link>
-            </>
-          )}
+        {/* NAV */}
+        <nav className="mr-auto hidden gap-1.5 md:flex">
+          {NAV.map((n) => {
+            const isActive = active === n.href
+            // Solo mostrar links protegidos si hay user
+            if (!user && (n.href === '/predictions' || n.href === '/bets' || n.href === '/trivia' || n.href === '/casino')) {
+              return null
+            }
+            return (
+              <Link
+                key={n.href}
+                href={n.href}
+                className={`rounded-full px-3.5 py-[7px] text-sm font-medium transition-colors ${
+                  isActive
+                    ? 'bg-accent-soft text-strong'
+                    : 'text-muted hover:bg-card hover:text-foreground'
+                }`}
+              >
+                {n.label}
+              </Link>
+            )
+          })}
         </nav>
 
-        <div className="flex items-center gap-3">
+        {/* WALLET + AVATAR (o boton login) */}
+        <div className="flex items-center gap-3.5">
           {user ? (
-            <div className="flex items-center gap-3 text-sm">
-              <div className="text-right hidden sm:block">
-                <p className="text-[var(--casino-yellow)] font-semibold">{user.total_points} pts</p>
-                <p className="text-slate-500 text-xs">${user.credits.toLocaleString()}</p>
+            <>
+              <div className="hidden whitespace-nowrap text-right leading-tight sm:block">
+                <p className="text-sm font-bold text-gold">
+                  {user.total_points.toLocaleString('es-CL')} pts
+                </p>
+                <p className="font-mono text-xs text-muted">
+                  ${user.credits.toLocaleString('es-CL')}
+                </p>
               </div>
-              <div className="h-8 w-8 rounded-full bg-slate-700 overflow-hidden">
-                {user.avatar_url ? (
-                  <img src={user.avatar_url} alt="" className="h-full w-full object-cover" />
-                ) : (
-                  <div className="h-full w-full flex items-center justify-center text-xs text-slate-400">
-                    {user.display_name[0]}
-                  </div>
-                )}
-              </div>
-            </div>
+              {user.avatar_url ? (
+                <div className="h-[38px] w-[38px] overflow-hidden rounded-full">
+                  <img
+                    src={user.avatar_url}
+                    alt=""
+                    className="h-full w-full object-cover"
+                  />
+                </div>
+              ) : (
+                <div className="grid h-[38px] w-[38px] place-items-center rounded-full bg-[linear-gradient(135deg,var(--color-accent),var(--color-accent-deep))] text-[15px] font-bold text-background">
+                  {user.display_name[0]}
+                </div>
+              )}
+            </>
           ) : (
             <Link
               href="/login"
-              className="rounded-lg bg-[var(--casino-red)] px-4 py-2 text-sm font-medium text-white hover:bg-[var(--accent-hover)]"
+              className="rounded-full bg-accent px-4 py-2 text-sm font-semibold text-background hover:bg-accent-hover"
             >
               Iniciar sesion
             </Link>
