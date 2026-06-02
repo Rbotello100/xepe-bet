@@ -252,7 +252,8 @@ export async function takePenaltyKick(sessionId: string, kickedZone: number) {
 
     const multiplier = getPenaltyMultiplier(newGoals)
     const nextProb = newGoals < GK_COVERAGE.length ? getPenaltyNextProb(newGoals) : 0
-    return { isGoal: true, coveredZones, kickedZone, multiplier, nextProb, sessionId, goalsScored: newGoals }
+    const isFree = Number(session.bet_amount) === 0
+    return { isGoal: true, coveredZones, kickedZone, multiplier, nextProb, sessionId, goalsScored: newGoals, isFree }
   }
 
   // Miss — cerrar sesión como busted (idempotente con guard)
@@ -278,7 +279,8 @@ export async function takePenaltyKick(sessionId: string, kickedZone: number) {
   }
 
   revalidatePath('/casino')
-  return { isGoal: false, coveredZones, kickedZone, multiplier: 0, nextProb: 0, sessionId }
+  const isFreeMiss = Number(session.bet_amount) === 0
+  return { isGoal: false, coveredZones, kickedZone, multiplier: 0, nextProb: 0, sessionId, isFree: isFreeMiss }
 }
 
 export async function cashoutPenalty(sessionId: string) {
@@ -323,7 +325,8 @@ export async function cashoutPenalty(sessionId: string) {
   })
 
   revalidatePath('/casino')
-  return { payout, multiplier, goalsScored: session.goals_scored }
+  const isFree = Number(session.bet_amount) === 0
+  return { payout, multiplier, goalsScored: session.goals_scored, isFree }
 }
 
 // ==========================================================
@@ -597,12 +600,14 @@ export async function revealMineCell(sessionId: string, cellIndex: number) {
       })
     }
 
+    const isFreeBust = Number(session.bet_amount) === 0
     return {
       isMine: true,
       cellIndex,
       minePositions, // revelar todas las minas al perder
       safeRevealed,
       multiplier: 0,
+      isFree: isFreeBust,
     }
   }
 
@@ -629,12 +634,14 @@ export async function revealMineCell(sessionId: string, cellIndex: number) {
     return await cashoutMines(sessionId)
   }
 
+  const isFree = Number(session.bet_amount) === 0
   return {
     isMine: false,
     cellIndex,
     safeRevealed: newSafeRevealed,
     multiplier: newMultiplier,
     nextMultiplier: calcMinesMultiplier(session.mine_count, newSafeRevealed.length + 1),
+    isFree,
   }
 }
 
@@ -684,6 +691,7 @@ export async function cashoutMines(sessionId: string) {
 
   revalidatePath('/casino')
 
+  const isFree = Number(session.bet_amount) === 0
   return {
     isMine: false,
     cashout: true,
@@ -691,6 +699,7 @@ export async function cashoutMines(sessionId: string) {
     multiplier,
     safeRevealed,
     minePositions: session.mine_positions,
+    isFree,
   }
 }
 

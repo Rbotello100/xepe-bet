@@ -62,11 +62,12 @@ export function PenaltyGame() {
   const [multiplier, setMultiplier]     = useState(0)
   const [nextProb, setNextProb]         = useState(0.583)
   const [payout, setPayout]             = useState(0)
+  const [isFree, setIsFree]             = useState(false)
   const [loading, setLoading]           = useState(false)
 
   const reset = () => {
     setPhase('idle'); setSessionId(null); setGoalsScored(0); setKickedZone(null); setCovered([])
-    setIsGoal(null); setMultiplier(0); setNextProb(0.583); setPayout(0)
+    setIsGoal(null); setMultiplier(0); setNextProb(0.583); setPayout(0); setIsFree(false)
   }
 
   const handleStart = async () => {
@@ -89,6 +90,7 @@ export function PenaltyGame() {
 
     setCovered(res.coveredZones ?? [])
     setIsGoal(res.isGoal ?? false)
+    setIsFree(res.isFree ?? false)
 
     setTimeout(() => {
       setPhase('result')
@@ -117,6 +119,7 @@ export function PenaltyGame() {
     const res = await cashoutPenalty(sessionId)
     if ('error' in res && res.error) { setLoading(false); return }
     setPayout(res.payout ?? 0)
+    setIsFree(res.isFree ?? false)
     setPhase('finished')
   }
 
@@ -126,6 +129,7 @@ export function PenaltyGame() {
     const res = await cashoutPenalty(sessionId)
     if ('error' in res && res.error) { setLoading(false); return }
     setPayout(res.payout ?? 0)
+    setIsFree(res.isFree ?? false)
     setPhase('finished')
     setLoading(false)
   }
@@ -171,19 +175,35 @@ export function PenaltyGame() {
   }
 
   // ——— FINISHED ———
+  // 3 estados:
+  //  - payout > 0:                          ganó plata (paid out)
+  //  - payout === 0 && isFree && goals > 0: ganó pero free play (sin créditos)
+  //  - else:                                 perdió (atajaron)
   if (phase === 'finished') {
+    const wonFree = payout === 0 && isFree && goalsScored > 0
     return (
       <Card className="text-center py-10 space-y-4">
-        <p className="text-5xl">{payout > 0 ? '🎉' : '😔'}</p>
-        <h2 className="text-3xl font-black text-white">
-          {payout > 0 ? `+$${payout.toLocaleString()}` : 'Perdiste'}
-        </h2>
+        <p className="text-5xl">{payout > 0 || wonFree ? '🎉' : '😔'}</p>
         {payout > 0 ? (
-          <p className="text-sm text-[var(--accent)]">
-            {goalsScored} gol{goalsScored > 1 ? 'es' : ''} · Multiplicador ×{multiplier}
-          </p>
+          <>
+            <h2 className="text-3xl font-black text-white">+${payout.toLocaleString()}</h2>
+            <p className="text-sm text-[var(--accent)]">
+              {goalsScored} gol{goalsScored > 1 ? 'es' : ''} · Multiplicador ×{multiplier}
+            </p>
+          </>
+        ) : wonFree ? (
+          <>
+            <h2 className="text-3xl font-black text-white">¡Ganaste!</h2>
+            <p className="text-sm text-[var(--accent)]">
+              {goalsScored} gol{goalsScored > 1 ? 'es' : ''} · Multiplicador ×{multiplier}
+            </p>
+            <p className="text-xs text-slate-500">Jugada del día gratis — sin créditos esta vez</p>
+          </>
         ) : (
-          <p className="text-sm text-slate-400">El arquero la atajo. Mejor suerte la proxima.</p>
+          <>
+            <h2 className="text-3xl font-black text-white">Perdiste</h2>
+            <p className="text-sm text-slate-400">El arquero la atajo. Mejor suerte la proxima.</p>
+          </>
         )}
         <Button onClick={reset} variant="secondary">Jugar de nuevo</Button>
       </Card>

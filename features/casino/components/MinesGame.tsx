@@ -27,11 +27,12 @@ export function MinesGame() {
   const [multiplier, setMultiplier]     = useState(1)
   const [nextMultiplier, setNextMult]   = useState(0)
   const [payout, setPayout]             = useState(0)
+  const [isFree, setIsFree]             = useState(false)
   const [loading, setLoading]           = useState(false)
 
   const reset = () => {
     setPhase('idle'); setSessionId(null); setRevealed(new Set()); setMines(new Set())
-    setBustedCell(null); setMultiplier(1); setNextMult(0); setPayout(0)
+    setBustedCell(null); setMultiplier(1); setNextMult(0); setPayout(0); setIsFree(false)
   }
 
   const handleStart = async (mines: number) => {
@@ -62,17 +63,20 @@ export function MinesGame() {
       setRevealed(new Set([...(res.safeRevealed ?? []), cellIndex]))
       setPhase('busted')
       setPayout(0)
+      setIsFree(res.isFree ?? false)
     } else if ('cashout' in res && res.cashout) {
       // Auto-cashout (reveló todas las seguras)
       setRevealed(new Set(res.safeRevealed ?? []))
       setMines(new Set(res.minePositions ?? []))
       setMultiplier(res.multiplier ?? 1)
       setPayout(res.payout ?? 0)
+      setIsFree(res.isFree ?? false)
       setPhase('cashed_out')
     } else {
       setRevealed(new Set(res.safeRevealed ?? []))
       setMultiplier(res.multiplier ?? 1)
       setNextMult('nextMultiplier' in res ? (res.nextMultiplier ?? 0) : 0)
+      setIsFree('isFree' in res ? (res.isFree ?? false) : false)
     }
     setLoading(false)
   }
@@ -85,6 +89,7 @@ export function MinesGame() {
     setMines(new Set(res.minePositions ?? []))
     setMultiplier(res.multiplier ?? 1)
     setPayout(res.payout ?? 0)
+    setIsFree(res.isFree ?? false)
     setPhase('cashed_out')
     setLoading(false)
   }
@@ -209,7 +214,10 @@ export function MinesGame() {
         <div className="text-center bg-red-500/10 border border-red-500/40 rounded-xl py-4 space-y-2">
           <p className="text-3xl">😬</p>
           <p className="text-xl font-black text-red-400">¡TARJETA ROJA!</p>
-          <p className="text-sm text-slate-400">Llegaste a ×{multiplier.toFixed(2)} con {safeRevealedCount} celdas. Perdiste ${COST}.</p>
+          <p className="text-sm text-slate-400">
+            Llegaste a ×{multiplier.toFixed(2)} con {safeRevealedCount} celdas.
+            {isFree ? ' Era jugada gratis, no perdiste créditos.' : ` Perdiste $${COST}.`}
+          </p>
           <Button onClick={reset} variant="secondary" size="sm">Jugar de nuevo</Button>
         </div>
       )}
@@ -217,8 +225,15 @@ export function MinesGame() {
       {phase === 'cashed_out' && (
         <div className="text-center bg-[var(--accent)]/10 border border-[var(--accent)]/40 rounded-xl py-4 space-y-2">
           <p className="text-3xl">🎉</p>
-          <p className="text-xl font-black text-[var(--accent)]">+${payout.toLocaleString()}</p>
-          <p className="text-sm text-slate-400">{safeRevealedCount} celdas reveladas · ×{multiplier.toFixed(2)}</p>
+          {payout > 0 ? (
+            <p className="text-xl font-black text-[var(--accent)]">+${payout.toLocaleString()}</p>
+          ) : (
+            <p className="text-xl font-black text-[var(--accent)]">¡Ganaste!</p>
+          )}
+          <p className="text-sm text-slate-400">
+            {safeRevealedCount} celdas reveladas · ×{multiplier.toFixed(2)}
+            {payout === 0 && isFree && <><br /><span className="text-xs text-slate-500">Jugada del día gratis — sin créditos</span></>}
+          </p>
           <Button onClick={reset} variant="secondary" size="sm">Jugar de nuevo</Button>
         </div>
       )}
