@@ -1,14 +1,18 @@
 import { createServerClient } from '@/lib/supabase/server'
 import { MatchCard } from './MatchCard'
+import { getCrowdDistribution } from '@/features/bets/queries'
 import type { MatchWithTeams } from '@/lib/types'
 
 export async function MatchList() {
   const supabase = await createServerClient()
 
-  const { data, error } = await supabase
-    .from('matches')
-    .select('*, home_team:teams!home_team_id(*), away_team:teams!away_team_id(*)')
-    .order('starts_at')
+  const [{ data, error }, crowd] = await Promise.all([
+    supabase
+      .from('matches')
+      .select('*, home_team:teams!home_team_id(*), away_team:teams!away_team_id(*)')
+      .order('starts_at'),
+    getCrowdDistribution(),
+  ])
 
   if (error) {
     return (
@@ -53,9 +57,24 @@ export async function MatchList() {
               {isDemo ? '⚽ Liga en vivo (Demo)' : `Grupo ${group}`}
             </h2>
             <div className="space-y-2">
-              {groupMatches.map(match => (
-                <MatchCard key={match.id} match={match} />
-              ))}
+              {groupMatches.map(match => {
+                const c = crowd.get(match.id)
+                const dist = c && c.total > 0
+                  ? ([
+                      Math.round((c.home / c.total) * 100),
+                      Math.round((c.draw / c.total) * 100),
+                      Math.round((c.away / c.total) * 100),
+                    ] as [number, number, number])
+                  : undefined
+                return (
+                  <MatchCard
+                    key={match.id}
+                    match={match}
+                    dist={dist}
+                    pool={c?.total}
+                  />
+                )
+              })}
             </div>
           </div>
         )

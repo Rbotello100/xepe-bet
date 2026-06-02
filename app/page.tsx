@@ -9,31 +9,26 @@ import { MatchCardSkeleton } from '@/components/ui/Skeleton'
 import { getOptionalAuth } from '@/lib/auth'
 import { getActiveFeedPosts } from '@/features/ai-feed/queries'
 import { getLeaderboard } from '@/features/leaderboard/queries'
-import type { BestBet } from '@/features/bets/components/BestBetWidget'
-
-// Mock razonable hasta que tengamos query real de "apuesta del dia con mayor
-// potential_payout o backers". TODO: query SQL real.
-const MOCK_BEST_BET: BestBet = {
-  user: 'Mateo',
-  label: 'Argentina gana + Over 2.5 goles',
-  stake: 30,
-  odds: 4.20,
-  payout: 126,
-  backers: 12,
-}
+import { getBestBetOfTheDay } from '@/features/bets/queries'
+import { createServerClient } from '@/lib/supabase/server'
 
 export default async function HomePage() {
   const auth = await getOptionalAuth()
-  const [feedPosts, leaderboard] = await Promise.all([
+  const supabase = await createServerClient()
+
+  const [feedPosts, leaderboard, bestBet, matchCount, liveCount] = await Promise.all([
     getActiveFeedPosts(10),
     getLeaderboard(7),
+    getBestBetOfTheDay(),
+    supabase.from('matches').select('id', { count: 'exact', head: true }).then(r => r.count ?? 0),
+    supabase.from('matches').select('id', { count: 'exact', head: true }).eq('status', 'live').then(r => r.count ?? 0),
   ])
 
   return (
     <>
       <Header user={auth?.profile ?? null} active="/" />
       <AppShell
-        left={<LeftSidebar bestBet={MOCK_BEST_BET} messages={feedPosts} />}
+        left={<LeftSidebar bestBet={bestBet} messages={feedPosts} />}
         right={
           <>
             <BetslipSidebar />
@@ -63,18 +58,16 @@ export default async function HomePage() {
               <p className="mt-1 text-sm text-muted">Predice. Apuesta. Gana.</p>
             </div>
             <div className="flex gap-5 sm:gap-7">
-              <div className="border-l border-card-border pl-5 first:border-l-0 first:pl-0">
+              <div>
                 <p className="text-[10px] uppercase tracking-wider text-subtle">Partidos</p>
-                <p className="font-mono text-2xl font-bold text-strong">72</p>
+                <p className="font-mono text-2xl font-bold text-strong">{matchCount}</p>
               </div>
-              <div className="border-l border-card-border pl-5">
-                <p className="text-[10px] uppercase tracking-wider text-subtle">Equipos</p>
-                <p className="font-mono text-2xl font-bold text-strong">48</p>
-              </div>
-              <div className="border-l border-card-border pl-5">
-                <p className="text-[10px] uppercase tracking-wider text-subtle">Sedes</p>
-                <p className="font-mono text-2xl font-bold text-strong">16</p>
-              </div>
+              {liveCount > 0 && (
+                <div className="border-l border-card-border pl-5">
+                  <p className="text-[10px] uppercase tracking-wider text-subtle">En vivo</p>
+                  <p className="font-mono text-2xl font-bold text-win">{liveCount}</p>
+                </div>
+              )}
             </div>
           </div>
         </section>

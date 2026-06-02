@@ -8,9 +8,9 @@ import { useParlay, type ParlayLeg } from '@/hooks/useParlay'
 
 interface MatchCardProps {
   match: MatchWithTeams
-  /** Distribucion de la multitud [%home, %draw, %away]. Mock por ahora — futuro: agregada de picks. */
+  /** Distribucion real de la multitud [%home, %draw, %away]. Omitir si no hay bets. */
   dist?: [number, number, number]
-  /** N apostando en el partido. Mock — futuro: count de bets activas. */
+  /** Count real de bets pending del match. Omitir si 0. */
   pool?: number
 }
 
@@ -31,7 +31,7 @@ function PickBar({ dist }: { dist: [number, number, number] }) {
   )
 }
 
-export function MatchCard({ match, dist = [62, 22, 16], pool }: MatchCardProps) {
+export function MatchCard({ match, dist, pool }: MatchCardProps) {
   const { legs, addLeg, removeLeg } = useParlay()
   const isFinished = match.status === 'finished'
   const isLive = match.status === 'live'
@@ -148,11 +148,11 @@ export function MatchCard({ match, dist = [62, 22, 16], pool }: MatchCardProps) 
         </div>
       )}
 
-      {/* foot: pickbar + N apostando */}
-      {!isFinished && (
+      {/* foot: solo renderiza si hay data real (distribucion o pool) */}
+      {!isFinished && dist && (
         <div className="mt-[11px] flex items-center gap-3">
           <PickBar dist={dist} />
-          {pool !== undefined && (
+          {pool !== undefined && pool > 0 && (
             <span className="whitespace-nowrap font-mono text-[11px] text-muted">
               {pool.toLocaleString('es-CL')} apostando
             </span>

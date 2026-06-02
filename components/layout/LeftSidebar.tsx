@@ -3,20 +3,20 @@ import { Relator } from '@/components/relator/Relator'
 import type { AIFeedPost } from '@/features/ai-feed/queries'
 
 /**
- * Columna izquierda del shell (sticky en >=lg).
- * Recibe data resuelta desde el page (Server Component padre) y la pasa al
- * Relator (Client Component).
+ * Columna izquierda del shell.
+ * Solo renderiza widgets si hay data real — bestBet=null → omite el card;
+ * messages=[] → el Relator se omite a si mismo.
  */
 export function LeftSidebar({
   bestBet,
   messages,
 }: {
-  bestBet: BestBet
+  bestBet: BestBet | null
   messages: AIFeedPost[]
 }) {
   return (
     <>
-      <BestBetWidget bet={bestBet} />
+      {bestBet && <BestBetWidget bet={bestBet} />}
       <Relator messages={messages} />
     </>
   )
