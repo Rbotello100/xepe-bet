@@ -95,12 +95,37 @@ export async function syncMatchOdds(
         const drawOutcome = h2h.outcomes.find(o => o.name === 'Draw')
         const awayOutcome = h2h.outcomes.find(o => o.name === event.away_team)
 
+        // Sanity check: cuotas validas estan en [1.01, 99]. Fuera de ese rango
+        // significa bug del provider (e.g. 0.5 → cashout calculado a 2x). Mejor
+        // descartar y reintentar que persistir y exponer al user.
+        const sanityCheck = (price: number | null | undefined): number | null => {
+          if (price === null || price === undefined) return null
+          if (!Number.isFinite(price)) return null
+          if (price < 1.01 || price > 99) return null
+          return price
+        }
+        const homePrice = sanityCheck(homeOutcome?.price)
+        const drawPrice = sanityCheck(drawOutcome?.price)
+        const awayPrice = sanityCheck(awayOutcome?.price)
+
+        // Si NO hay al menos una cuota razonable, no marcamos odds_synced=true
+        // (asi el cron reintenta) y aumentamos attempts.
+        const hasUsableOdd = homePrice !== null || drawPrice !== null || awayPrice !== null
+        if (!hasUsableOdd) {
+          await supabase
+            .from('matches')
+            .update({ odds_sync_attempts: await incAttempts(match.id, 'odds_sync_attempts') })
+            .eq('id', match.id)
+          noBookmaker++
+          continue
+        }
+
         const { error } = await supabase
           .from('matches')
           .update({
-            odds_home: homeOutcome?.price ?? null,
-            odds_draw: drawOutcome?.price ?? null,
-            odds_away: awayOutcome?.price ?? null,
+            odds_home: homePrice,
+            odds_draw: drawPrice,
+            odds_away: awayPrice,
             odds_updated_at: new Date().toISOString(),
             odds_synced: true,
             status: 'open',

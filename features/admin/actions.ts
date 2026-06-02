@@ -4,7 +4,7 @@ import { createServerClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { revalidatePath } from 'next/cache'
 import { syncMatchOdds } from '@/lib/sync/odds'
-import { syncFinishedScores, autoResolveMatch } from '@/lib/sync/scores'
+import { syncFinishedScores, autoResolveMatch, voidBetsForCancelledMatch } from '@/lib/sync/scores'
 import { discoverAllSports, type DiscoverResult } from '@/lib/sync/discover'
 import { addCredits } from '@/lib/credits'
 import { ACTIVE_SPORT_KEYS } from '@/lib/constants'
@@ -146,6 +146,53 @@ export async function resolveMatch(matchId: string, homeScore: number, awayScore
     bets_lost: betsLost,
     parlays_resolved: parlaysResolved,
   }
+}
+
+/**
+ * Marca un partido como cancelled y dispara refund automatico de todas las
+ * apuestas afectadas (single bets + parlay legs).
+ *
+ * Idempotente: si el partido ya esta cancelled o el refund ya corrio, no duplica.
+ */
+export async function cancelMatch(matchId: string, reason?: string) {
+  const fail = await requireAdmin()
+  if (fail) return fail
+
+  const admin = createAdminClient()
+  const { data: match } = await admin
+    .from('matches')
+    .select('id, status, home_team:teams!home_team_id(name), away_team:teams!away_team_id(name)')
+    .eq('id', matchId)
+    .single()
+
+  if (!match) return { error: 'Partido no encontrado' }
+  if (match.status === 'cancelled') {
+    // Idempotencia: re-correr para procesar bets que hayan quedado pendientes
+    const reRefund = await voidBetsForCancelledMatch(matchId)
+    revalidatePath('/admin')
+    return { success: true, already_cancelled: true, ...reRefund }
+  }
+  if (match.status === 'finished') return { error: 'Partido ya finalizado, no se puede cancelar' }
+
+  await admin
+    .from('matches')
+    .update({ status: 'cancelled', updated_at: new Date().toISOString() })
+    .eq('id', matchId)
+
+  const refundResult = await voidBetsForCancelledMatch(matchId)
+
+  const homeName = (Array.isArray(match.home_team) ? match.home_team[0] : match.home_team)?.name ?? 'Local'
+  const awayName = (Array.isArray(match.away_team) ? match.away_team[0] : match.away_team)?.name ?? 'Visita'
+
+  await admin.from('activity_feed').insert({
+    user_id: (await (await createServerClient()).auth.getUser()).data.user?.id,
+    action_type: 'achievement',
+    description: `cancelo ${homeName} vs ${awayName}${reason ? ` (${reason})` : ''}`,
+    metadata: { match_id: matchId, reason: reason ?? null, ...refundResult },
+  })
+
+  revalidatePath('/admin')
+  return { success: true, ...refundResult }
 }
 
 export async function syncOddsManual(sportKey?: string) {

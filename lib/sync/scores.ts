@@ -231,3 +231,165 @@ export async function autoResolveMatch(matchId: string, homeScore: number, awayS
     }
   }
 }
+
+/**
+ * Cancela un partido y reembolsa todas las apuestas afectadas.
+ *
+ * Reglas:
+ * - Bets pending de este match → status='cancelled' + refund del amount original.
+ * - Parlay legs pending → status='void'.
+ * - Cada parlay con una leg void se vuelve 'void' + refund del amount original.
+ *   Regla conservadora (favor del user): una sola leg void cancela todo el parlay
+ *   y refunda. Alternativa sportsbook (recalcular odds sin la leg void) es mas
+ *   compleja y la dejamos para una version futura.
+ * - Si un parlay ya tenia legs perdidas, queda como 'lost' (no refund) — la
+ *   leg void no salva un parlay ya perdido.
+ *
+ * Idempotente: usa .eq('status','pending') en cada UPDATE. Si esta funcion se
+ * llama 2 veces, la segunda no afecta rows.
+ *
+ * NOTA: cada refund llama addCredits() que usa add_credits_atomic (atomico
+ * con audit). No es 100% transaccional a nivel "cancelMatch entero" — si crashea
+ * a mitad, algunas bets quedan canceladas y otras pending. Un re-run del mismo
+ * cancelMatch va a cubrir las restantes.
+ */
+export async function voidBetsForCancelledMatch(matchId: string): Promise<{
+  bets_voided: number
+  parlay_legs_voided: number
+  parlays_voided: number
+  parlays_lost: number
+  refunded_amount: number
+}> {
+  const admin = createAdminClient()
+  let betsVoided = 0
+  let parlayLegsVoided = 0
+  let parlaysVoided = 0
+  let parlaysLost = 0
+  let refundedTotal = 0
+
+  // ─── Bets singles ─────────────────────────────────────────────
+  const { data: bets } = await admin
+    .from('bets')
+    .select('id, user_id, amount, pick, odds_at_placement')
+    .eq('match_id', matchId)
+    .eq('status', 'pending')
+
+  for (const bet of bets ?? []) {
+    const { data: updated } = await admin
+      .from('bets')
+      .update({ status: 'cancelled', resolved_at: new Date().toISOString() })
+      .eq('id', bet.id)
+      .eq('status', 'pending')
+      .select('id')
+      .maybeSingle()
+    if (!updated) continue  // alguien ya lo proceso
+
+    const refund = await addCredits(
+      bet.user_id,
+      bet.amount,
+      'refund',
+      `Refund apuesta ${bet.pick} (partido cancelado)`,
+      bet.id,
+    )
+    if (refund.success) {
+      betsVoided++
+      refundedTotal += bet.amount
+    }
+  }
+
+  // ─── Parlay legs ──────────────────────────────────────────────
+  const { data: legs } = await admin
+    .from('parlay_legs')
+    .select('id, parlay_id')
+    .eq('match_id', matchId)
+    .eq('status', 'pending')
+
+  const affectedParlayIds = new Set<string>()
+  for (const leg of legs ?? []) {
+    const { data: updated } = await admin
+      .from('parlay_legs')
+      .update({ status: 'void' })
+      .eq('id', leg.id)
+      .eq('status', 'pending')
+      .select('id')
+      .maybeSingle()
+    if (!updated) continue
+    parlayLegsVoided++
+    affectedParlayIds.add(leg.parlay_id)
+  }
+
+  // ─── Parlays afectados ────────────────────────────────────────
+  for (const parlayId of affectedParlayIds) {
+    const { data: parlay } = await admin
+      .from('parlays')
+      .select('id, user_id, amount, status')
+      .eq('id', parlayId)
+      .single()
+    if (!parlay) continue
+
+    // Si el parlay ya no esta pending (resuelto antes), no tocamos.
+    if (parlay.status !== 'pending') continue
+
+    const { data: allLegs } = await admin
+      .from('parlay_legs')
+      .select('status')
+      .eq('parlay_id', parlayId)
+
+    const hasLost = allLegs?.some(l => l.status === 'lost') ?? false
+    const hasPending = allLegs?.some(l => l.status === 'pending') ?? false
+
+    if (hasLost) {
+      // Parlay ya estaba perdido — marcamos lost, sin refund.
+      const { data: updated } = await admin
+        .from('parlays')
+        .update({ status: 'lost' })
+        .eq('id', parlayId)
+        .eq('status', 'pending')
+        .select('id')
+        .maybeSingle()
+      if (updated) parlaysLost++
+      continue
+    }
+
+    if (hasPending) {
+      // El parlay tiene otras legs todavia pending — esperamos a que se
+      // resuelvan. La leg void cuenta como "no perdida" pero aun no
+      // disparamos refund hasta saber el destino final del parlay.
+      continue
+    }
+
+    // Todas las legs son void o won (sin lost ni pending). Conservador:
+    // una sola void = parlay void + refund completo.
+    const hasVoid = allLegs?.some(l => l.status === 'void') ?? false
+    if (hasVoid) {
+      const { data: updated } = await admin
+        .from('parlays')
+        .update({ status: 'void' })
+        .eq('id', parlayId)
+        .eq('status', 'pending')
+        .select('id')
+        .maybeSingle()
+      if (!updated) continue
+
+      const refund = await addCredits(
+        parlay.user_id,
+        parlay.amount,
+        'refund',
+        `Refund parlay (partido cancelado)`,
+        parlay.id,
+      )
+      if (refund.success) {
+        parlaysVoided++
+        refundedTotal += parlay.amount
+      }
+    }
+  }
+
+  return {
+    bets_voided: betsVoided,
+    parlay_legs_voided: parlayLegsVoided,
+    parlays_voided: parlaysVoided,
+    parlays_lost: parlaysLost,
+    refunded_amount: refundedTotal,
+  }
+}

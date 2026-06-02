@@ -14,8 +14,7 @@
 
 BEGIN;
 
--- Nuke a
-nything that references matches/teams
+-- Nuke anything that references matches/teams
 TRUNCATE TABLE
   match_markets,
   parlay_legs,

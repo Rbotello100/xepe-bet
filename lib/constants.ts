@@ -3,6 +3,13 @@ export const INITIAL_CREDITS = 1000
 export const MIN_BET = 10
 export const MAX_BET = 500
 
+// Parlay limits — defensa contra payouts astronomicos.
+// La RPC SQL valida los mismos topes (place_parlay_atomic) como segunda capa.
+export const MIN_PARLAY_LEGS = 2
+export const MAX_PARLAY_LEGS = 10
+export const MAX_PARLAY_ODDS = 1000      // multiplicador total maximo (10 legs x 2.0 = 1024, fuera)
+export const MAX_PARLAY_PAYOUT = 50000   // tope al premio potencial en USD
+
 // --- Time Locks ---
 export const BET_LOCK_HOURS = 1        // bets close 1h before kickoff
 export const PREDICTION_LOCK_HOURS = 24 // predictions lock 24h before kickoff
