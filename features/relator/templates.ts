@@ -66,6 +66,31 @@ const TRIVIAS: string[] = [
   'Just Fontaine marcó 13 goles en un solo Mundial. Suecia 1958. Imbatible.',
   'Alemania ganó 4 mundiales jugando con el mismo logo desde 1954.',
   'Antoine Griezmann es el único francés con MVP y Bota de Bronce a la vez.',
+  'Messi pasó por 5 mundiales antes de levantar la Copa. Paciencia premiada.',
+  'El Mundial 1950 fue el único sin final: se ganó por puntos. Uruguay campeón.',
+  'Inglaterra ganó su único Mundial en casa: 1966 vs Alemania, 4-2.',
+  'Ronaldo Nazário es el goleador histórico de los Mundiales: 15 goles.',
+  'Diego Maradona fue expulsado por dopaje en USA 1994. Mundial bisagra.',
+  'Suiza eliminó a Francia en Qatar 2022 en penales: hubo lágrimas.',
+  'Croacia llegó a 2 finales con menos de 5 millones de habitantes.',
+  'El Mundial de Brasil 1950 vio el Maracanazo: Uruguay derrumbó al local.',
+  'En el Mundial 2026 cada grupo es de 4 equipos. 12 grupos, 48 selecciones.',
+  'Argentina jugó 6 finales: ganó 3, perdió 3. Récord empatado con Alemania.',
+  'Sudáfrica 2010 vio a Iniesta convertir el gol más recordado de España.',
+  'Cuauhtémoc Blanco jugó 3 mundiales consecutivos para México: 98, 02, 10.',
+  'Francia ganó 1998 con un gol de cabeza de Zidane en la final.',
+  'Italia ganó 4 mundiales: 1934, 1938, 1982, 2006. Última: contra Francia.',
+  'En 2022 Marruecos venció a Bélgica, España y Portugal. Hizo historia.',
+  'El primer Mundial televisado fue Suiza 1954. Húngara perdió la final.',
+  'Hungría 1954 fue el último equipo invicto que perdió la final.',
+  'El Mundial 2010 introdujo el balón Jabulani, criticado por todos los arqueros.',
+  'Maradona marcó 5 goles en México 1986, incluido "la Mano de Dios".',
+  'En Rusia 2018, Croacia llegó a su primera final. Modric ganó el Balón de Oro.',
+  'La final más goleada: Suecia 1958, 5-2 Brasil sobre Suecia.',
+  'Pelé debutó en Mundial a los 17 años. Marcó en la final de 1958.',
+  'Solo 4 países jugaron una final en cada continente: Brasil, Alemania, Italia, Argentina.',
+  'La Bota de Oro de un Mundial puede ir a un jugador eliminado en fase de grupos.',
+  'En 2026 habrá 104 partidos en total. Más que cualquier Mundial anterior.',
 ]
 
 // ----------------------------------------------------------
@@ -87,6 +112,26 @@ const AMBIENTE: string[] = [
   'No todo parlay debe armarse. Pero algunos sí.',
   'La trivia diaria suma más que una buena cuota.',
   'Hoy se juega. Mañana se cuenta.',
+  'Mejor un pick chico bien pensado que uno grande mal armado.',
+  'Las rachas existen. Hasta que no.',
+  'No persigás pérdidas. Persiguelas mañana con cabeza fría.',
+  'La paciencia paga más cuotas que la urgencia.',
+  'El que sabe esperar la cuota correcta, gana dos veces.',
+  'Apostá lo que estás dispuesto a perder. Ni un peso más.',
+  'El partido grande no siempre es el de mejor cuota.',
+  'Los favoritos pierden. Los underdogs ganan. Por eso hay juego.',
+  'Una buena lectura vale más que diez intuiciones.',
+  'Si dudás del pick, dudás de la cuota. Pasá.',
+  'Cuota injusta = oportunidad. Cuota justa = mercado eficiente.',
+  'Lo más caro de una apuesta es no entender por qué la hiciste.',
+  'Si lo ganas todo, estás apostando muy poco.',
+  'El casino paga las ilusiones. La data paga los resultados.',
+  'Hoy ganás, mañana perdés. El año se mide entero.',
+  'No hay cuota mágica. Solo lecturas mejores y peores.',
+  'El silencio del cracks dice más que el grito del novato.',
+  'Quien sale con plata, sale con dignidad.',
+  'Cuando dudás entre dos picks, mirá las cuotas. Mandan.',
+  'La cancha siempre da revancha. La estadística también.',
 ]
 
 // ----------------------------------------------------------
@@ -101,6 +146,18 @@ const META: string[] = [
   'Apuesta mínima $10, máxima $500. Ni más ni menos.',
   'Parlay mínimo 2 patas, máximo 6. Más de eso es deseo.',
   'Si te quedan créditos bajos, jugá trivia: es gratis 1 vez/día.',
+  'Las cuotas se mueven con el mercado. Ojo con los cambios.',
+  'Penales en el casino paga hasta x200 si clavás 6 seguidos.',
+  'Slots tiene 6 símbolos. El más raro paga 8.000.',
+  'Mines: cuanto más celdas reveles, más alta la cuota. Y el riesgo.',
+  'Rasca y gana: 25% de chance de premio. Vale los 15 créditos.',
+  'Felipe se esconde en alguna sala. Saber dónde es la mitad del juego.',
+  'Ranking se cierra al final del torneo. Hay tiempo de subir.',
+  'Aciertos exactos en predicciones suman 3x. Conviene afinar el ojo.',
+  'Solo se computa una apuesta por partido por usuario. No dupliquen.',
+  'Los créditos no se compran. Se ganan o se queman jugando.',
+  'Cada acción suma puntos. El ranking premia constancia.',
+  'Logros desbloquean créditos extra. Mirá tu perfil.',
 ]
 
 // ==========================================================
@@ -329,14 +386,14 @@ export async function buildTemplateFeed(): Promise<Post[]> {
     posts.push(...pickN(v, 2).map((content): Post => ({ kind: 'summary', content })))
   }
 
-  // -------- Trivia (8 random de 15)
-  posts.push(...pickN(TRIVIAS, 8).map((content): Post => ({ kind: 'trivia', content })))
+  // -------- Trivia (25 random de 40)
+  posts.push(...pickN(TRIVIAS, 25).map((content): Post => ({ kind: 'trivia', content })))
 
-  // -------- Ambiente (8 random de 15)
-  posts.push(...pickN(AMBIENTE, 8).map((content): Post => ({ kind: 'flash', content })))
+  // -------- Ambiente (25 random de 35)
+  posts.push(...pickN(AMBIENTE, 25).map((content): Post => ({ kind: 'flash', content })))
 
-  // -------- Meta (5 random de 8)
-  posts.push(...pickN(META, 5).map((content): Post => ({ kind: 'analysis', content })))
+  // -------- Meta (12 random de 20)
+  posts.push(...pickN(META, 12).map((content): Post => ({ kind: 'analysis', content })))
 
   // Mezclar para que el orden de aparición sea variado
   return shuffle(posts)
