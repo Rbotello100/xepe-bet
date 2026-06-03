@@ -71,6 +71,9 @@ export function FelipeGame({ credits }: { credits: number }) {
     })
   }
 
+  // startTransition resetea isPending automaticamente cuando el callback
+  // termina (incluso si throwea), pero el try/catch nos permite mostrar un
+  // mensaje claro al user en lugar de un fallo silencioso.
   const handlePlaceBets = () => {
     if (Object.keys(bets).length === 0) {
       setError('Tenes que apostar a al menos una sala')
@@ -79,14 +82,19 @@ export function FelipeGame({ credits }: { credits: number }) {
     setError(null)
     startTransition(async () => {
       const payload = Object.entries(bets).map(([room_id, amount]) => ({ room_id, amount }))
-      const res = (await placeFelipeBets(payload)) as { error?: string; sessionId?: string }
-      if (res.error) {
-        setError(res.error)
-        return
-      }
-      if (res.sessionId) {
-        setSessionId(res.sessionId)
-        setPhase('placed')
+      try {
+        const res = (await placeFelipeBets(payload)) as { error?: string; sessionId?: string }
+        if (res.error) {
+          setError(res.error)
+          return
+        }
+        if (res.sessionId) {
+          setSessionId(res.sessionId)
+          setPhase('placed')
+        }
+      } catch (err) {
+        console.error('[FelipeGame] placeFelipeBets failed', err)
+        setError('No se pudo crear la ronda. Probá de nuevo.')
       }
     })
   }
@@ -94,25 +102,30 @@ export function FelipeGame({ credits }: { credits: number }) {
   const handleReveal = () => {
     if (!sessionId) return
     startTransition(async () => {
-      const res = (await revealFelipe(sessionId)) as {
-        error?: string
-        winningRoom?: string
-        winningRoomName?: string
-        payout?: number
-        totalBet?: number
-      }
-      if (res.error) {
-        setError(res.error)
-        return
-      }
-      if (res.winningRoom && res.winningRoomName !== undefined && res.payout !== undefined && res.totalBet !== undefined) {
-        setResult({
-          winningRoom: res.winningRoom,
-          winningRoomName: res.winningRoomName,
-          payout: res.payout,
-          totalBet: res.totalBet,
-        })
-        setPhase('revealed')
+      try {
+        const res = (await revealFelipe(sessionId)) as {
+          error?: string
+          winningRoom?: string
+          winningRoomName?: string
+          payout?: number
+          totalBet?: number
+        }
+        if (res.error) {
+          setError(res.error)
+          return
+        }
+        if (res.winningRoom && res.winningRoomName !== undefined && res.payout !== undefined && res.totalBet !== undefined) {
+          setResult({
+            winningRoom: res.winningRoom,
+            winningRoomName: res.winningRoomName,
+            payout: res.payout,
+            totalBet: res.totalBet,
+          })
+          setPhase('revealed')
+        }
+      } catch (err) {
+        console.error('[FelipeGame] revealFelipe failed', err)
+        setError('No se pudo revelar el resultado. Recargá la pagina.')
       }
     })
   }

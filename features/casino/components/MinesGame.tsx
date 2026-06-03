@@ -35,63 +35,79 @@ export function MinesGame() {
     setBustedCell(null); setMultiplier(1); setNextMult(0); setPayout(0); setIsFree(false)
   }
 
+  // try/finally en cada handler: garantiza setLoading(false) aunque la
+  // server action throwee (timeout, network, error). Sin esto el UI quedaba
+  // pegado en estado "loading" para siempre.
   const handleStart = async (mines: number) => {
     setLoading(true)
     setMineCount(mines)
-    const res = await startMines(mines)
-    if ('error' in res && res.error) { setLoading(false); return }
-    setSessionId(res.sessionId ?? null)
-    setRevealed(new Set())
-    setMines(new Set())
-    setBustedCell(null)
-    setMultiplier(1)
-    setPhase('playing')
-    setLoading(false)
+    try {
+      const res = await startMines(mines)
+      if ('error' in res && res.error) return
+      setSessionId(res.sessionId ?? null)
+      setRevealed(new Set())
+      setMines(new Set())
+      setBustedCell(null)
+      setMultiplier(1)
+      setPhase('playing')
+    } catch (err) {
+      console.error('[MinesGame] startMines failed', err)
+    } finally {
+      setLoading(false)
+    }
   }
 
   const handleReveal = async (cellIndex: number) => {
     if (phase !== 'playing' || loading || !sessionId) return
     if (revealed.has(cellIndex)) return
     setLoading(true)
+    try {
+      const res = await revealMineCell(sessionId, cellIndex)
+      if ('error' in res && res.error) return
 
-    const res = await revealMineCell(sessionId, cellIndex)
-    if ('error' in res && res.error) { setLoading(false); return }
-
-    if (res.isMine) {
-      setBustedCell(cellIndex)
-      setMines(new Set(res.minePositions ?? []))
-      setRevealed(new Set([...(res.safeRevealed ?? []), cellIndex]))
-      setPhase('busted')
-      setPayout(0)
-      setIsFree(res.isFree ?? false)
-    } else if ('cashout' in res && res.cashout) {
-      // Auto-cashout (reveló todas las seguras)
-      setRevealed(new Set(res.safeRevealed ?? []))
-      setMines(new Set(res.minePositions ?? []))
-      setMultiplier(res.multiplier ?? 1)
-      setPayout(res.payout ?? 0)
-      setIsFree(res.isFree ?? false)
-      setPhase('cashed_out')
-    } else {
-      setRevealed(new Set(res.safeRevealed ?? []))
-      setMultiplier(res.multiplier ?? 1)
-      setNextMult('nextMultiplier' in res ? (res.nextMultiplier ?? 0) : 0)
-      setIsFree('isFree' in res ? (res.isFree ?? false) : false)
+      if (res.isMine) {
+        setBustedCell(cellIndex)
+        setMines(new Set(res.minePositions ?? []))
+        setRevealed(new Set([...(res.safeRevealed ?? []), cellIndex]))
+        setPhase('busted')
+        setPayout(0)
+        setIsFree(res.isFree ?? false)
+      } else if ('cashout' in res && res.cashout) {
+        setRevealed(new Set(res.safeRevealed ?? []))
+        setMines(new Set(res.minePositions ?? []))
+        setMultiplier(res.multiplier ?? 1)
+        setPayout(res.payout ?? 0)
+        setIsFree(res.isFree ?? false)
+        setPhase('cashed_out')
+      } else {
+        setRevealed(new Set(res.safeRevealed ?? []))
+        setMultiplier(res.multiplier ?? 1)
+        setNextMult('nextMultiplier' in res ? (res.nextMultiplier ?? 0) : 0)
+        setIsFree('isFree' in res ? (res.isFree ?? false) : false)
+      }
+    } catch (err) {
+      console.error('[MinesGame] revealMineCell failed', err)
+    } finally {
+      setLoading(false)
     }
-    setLoading(false)
   }
 
   const handleCashout = async () => {
     if (!sessionId || loading || revealed.size === 0) return
     setLoading(true)
-    const res = await cashoutMines(sessionId)
-    if ('error' in res && res.error) { setLoading(false); return }
-    setMines(new Set(res.minePositions ?? []))
-    setMultiplier(res.multiplier ?? 1)
-    setPayout(res.payout ?? 0)
-    setIsFree(res.isFree ?? false)
-    setPhase('cashed_out')
-    setLoading(false)
+    try {
+      const res = await cashoutMines(sessionId)
+      if ('error' in res && res.error) return
+      setMines(new Set(res.minePositions ?? []))
+      setMultiplier(res.multiplier ?? 1)
+      setPayout(res.payout ?? 0)
+      setIsFree(res.isFree ?? false)
+      setPhase('cashed_out')
+    } catch (err) {
+      console.error('[MinesGame] cashoutMines failed', err)
+    } finally {
+      setLoading(false)
+    }
   }
 
   // ——— IDLE: selección de dificultad ———

@@ -70,14 +70,21 @@ export function PenaltyGame() {
     setIsGoal(null); setMultiplier(0); setNextProb(0.583); setPayout(0); setIsFree(false)
   }
 
+  // try/catch en cada handler: garantiza que setLoading vuelva a false
+  // aunque la server action throwee — sin esto el UI quedaba pegado.
   const handleStart = async () => {
     setLoading(true)
-    const res = await startPenaltyGame(BET)
-    if ('error' in res && res.error) { setLoading(false); return }
-    setSessionId(res.sessionId ?? null)
-    setNextProb(res.firstProb ?? 0.583)
-    setPhase('kicking')
-    setLoading(false)
+    try {
+      const res = await startPenaltyGame(BET)
+      if ('error' in res && res.error) return
+      setSessionId(res.sessionId ?? null)
+      setNextProb(res.firstProb ?? 0.583)
+      setPhase('kicking')
+    } catch (err) {
+      console.error('[PenaltyGame] startPenaltyGame failed', err)
+    } finally {
+      setLoading(false)
+    }
   }
 
   const handleKick = async (zone: number) => {
@@ -85,13 +92,27 @@ export function PenaltyGame() {
     setLoading(true)
     setKickedZone(zone)
 
-    const res = await takePenaltyKick(sessionId, zone)
-    if ('error' in res && res.error) { setLoading(false); return }
+    let res: Awaited<ReturnType<typeof takePenaltyKick>>
+    try {
+      res = await takePenaltyKick(sessionId, zone)
+    } catch (err) {
+      console.error('[PenaltyGame] takePenaltyKick failed', err)
+      setLoading(false)
+      return
+    }
+    if ('error' in res && res.error) {
+      setLoading(false)
+      return
+    }
 
     setCovered(res.coveredZones ?? [])
     setIsGoal(res.isGoal ?? false)
     setIsFree(res.isFree ?? false)
 
+    // setLoading(false) corre dentro del nested setTimeout — lo dejamos
+    // ahi para no romper la coreografia de la animacion. Si la rama
+    // res.isGoal && newGoals>=MAX dispara handleAutoCashout, esa funcion
+    // ahora tiene try/finally tambien.
     setTimeout(() => {
       setPhase('result')
       setTimeout(() => {
@@ -116,22 +137,33 @@ export function PenaltyGame() {
 
   const handleAutoCashout = async () => {
     if (!sessionId) return
-    const res = await cashoutPenalty(sessionId)
-    if ('error' in res && res.error) { setLoading(false); return }
-    setPayout(res.payout ?? 0)
-    setIsFree(res.isFree ?? false)
-    setPhase('finished')
+    try {
+      const res = await cashoutPenalty(sessionId)
+      if ('error' in res && res.error) return
+      setPayout(res.payout ?? 0)
+      setIsFree(res.isFree ?? false)
+      setPhase('finished')
+    } catch (err) {
+      console.error('[PenaltyGame] auto cashoutPenalty failed', err)
+    } finally {
+      setLoading(false)
+    }
   }
 
   const handleCashout = async () => {
     if (!sessionId || loading) return
     setLoading(true)
-    const res = await cashoutPenalty(sessionId)
-    if ('error' in res && res.error) { setLoading(false); return }
-    setPayout(res.payout ?? 0)
-    setIsFree(res.isFree ?? false)
-    setPhase('finished')
-    setLoading(false)
+    try {
+      const res = await cashoutPenalty(sessionId)
+      if ('error' in res && res.error) return
+      setPayout(res.payout ?? 0)
+      setIsFree(res.isFree ?? false)
+      setPhase('finished')
+    } catch (err) {
+      console.error('[PenaltyGame] cashoutPenalty failed', err)
+    } finally {
+      setLoading(false)
+    }
   }
 
   const handleContinue = () => {

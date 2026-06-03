@@ -21,12 +21,32 @@ export function ScratchGame({ credits }: { credits: number }) {
     setRevealCount(0)
     setSessionId(null)
 
-    const res = await playScratchCard()
-    if ('error' in res && res.error) { setLoading(false); return }
+    try {
+      const res = await playScratchCard()
+      if ('error' in res && res.error) return
+      setCells(res.cells ?? null)
+      setSessionId(res.sessionId ?? null)
+    } catch (err) {
+      console.error('[ScratchGame] playScratchCard failed', err)
+    } finally {
+      setLoading(false)
+    }
+  }
 
-    setCells(res.cells ?? null)
-    setSessionId(res.sessionId ?? null)
-    setLoading(false)
+  // Helper para claim — encapsula try/catch para que un error del server
+  // no deje la tarjeta en estado intermedio (sin result, sin reset).
+  const safeClaim = async (id: string) => {
+    try {
+      const res = await claimScratchPrize(id)
+      setResult({ payout: res.payout ?? 0 })
+      setRevealed(Array(9).fill(true))
+    } catch (err) {
+      console.error('[ScratchGame] claimScratchPrize failed', err)
+      // Marca el result como 0 para que el user vea "Sin premio" en lugar
+      // de quedarse pegado sin saber qué pasó.
+      setResult({ payout: 0 })
+      setRevealed(Array(9).fill(true))
+    }
   }
 
   const revealCell = async (index: number) => {
@@ -38,7 +58,6 @@ export function ScratchGame({ credits }: { credits: number }) {
     const newCount = revealCount + 1
     setRevealCount(newCount)
 
-    // After revealing 3+, check for matches client-side (purely visual)
     if (newCount >= 3) {
       const revealedSymbols = cells.filter((_, i) => newRevealed[i])
       const counts: Record<string, number> = {}
@@ -47,15 +66,9 @@ export function ScratchGame({ credits }: { credits: number }) {
       const matching = Object.entries(counts).find(([, c]) => c >= 3)
 
       if (matching) {
-        // El servidor decide el premio (ya está guardado en BD), solo confirmamos con sessionId
-        const res = await claimScratchPrize(sessionId)
-        setResult({ payout: res.payout ?? 0 })
-        setRevealed(Array(9).fill(true))
+        await safeClaim(sessionId)
       } else if (newCount >= 6) {
-        // Sin 3 iguales después de 6 reveals → claim igual para cerrar la sesión
-        const res = await claimScratchPrize(sessionId)
-        setResult({ payout: res.payout ?? 0 })
-        setRevealed(Array(9).fill(true))
+        await safeClaim(sessionId)
       }
     }
   }
