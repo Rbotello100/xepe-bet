@@ -181,9 +181,13 @@ export async function playSlots() {
   const grid = Array.from({ length: 9 }, () => spinCell())
   const win = checkWinLines(grid)
   const payout = win?.payout ?? 0
+  // Slots no tiene tabla de sesion persistente. Generamos un id opaco para
+  // que addCredits pueda hacer idempotency check (evita doble pago si la
+  // action se reintenta por timeout). Mismo id va al metadata de casino_sessions.
+  const spinId = crypto.randomUUID()
 
   if (payout > 0) {
-    await addCredits(user.id, payout, 'casino_win', `Slots gano $${payout}`)
+    await addCredits(user.id, payout, 'casino_win', `Slots gano $${payout}`, spinId)
   }
 
   // Relator: slots con payout grande (s3 o mejor). Le adjunta el quiebre de
@@ -307,6 +311,15 @@ export async function takePenaltyKick(sessionId: string, kickedZone: number) {
   if (loadError || !session) return { error: 'Sesion invalida o cerrada' }
 
   const goalsScored: number = session.goals_scored
+
+  // Guard: con 6 goles ya alcanzaste el multiplier maximo (x200). Server-side
+  // bloqueamos kicks adicionales para impedir que un cliente alterado siga
+  // tirando y arriesgue todo. La UI ya muestra nextProb=0 y bloquea el boton,
+  // pero esta validacion server es la fuente de verdad.
+  if (goalsScored >= PENALTY_MULTIPLIERS.length) {
+    return { error: 'Maximo de goles alcanzado, cobra para cerrar la sesion' }
+  }
+
   const coverage = getPenaltyCoverage(goalsScored)
 
   // RNG server-side (Fisher-Yates)
@@ -387,7 +400,7 @@ export async function cashoutPenalty(sessionId: string) {
   const multiplier = getPenaltyMultiplier(session.goals_scored)
   const payout = Math.round(Number(session.bet_amount) * multiplier)
 
-  await addCredits(user.id, payout, 'casino_win', `Penales retiro con ${session.goals_scored} gol(es), gano $${payout}`)
+  await addCredits(user.id, payout, 'casino_win', `Penales retiro con ${session.goals_scored} gol(es), gano $${payout}`, sessionId)
 
   // Relator: cashout grande de penales (+ snippet de racha mala quebrada)
   if (payout >= RELATOR_PENALTY_MIN_PAYOUT) {
@@ -548,7 +561,7 @@ export async function claimScratchPrize(sessionId: string) {
   const payout = Number(session.prize_amount ?? 0)
 
   if (payout > 0) {
-    await addCredits(user.id, payout, 'casino_win', `Rasca y gana $${payout}`)
+    await addCredits(user.id, payout, 'casino_win', `Rasca y gana $${payout}`, sessionId)
   }
 
   // Tracking PnL
@@ -763,7 +776,7 @@ export async function cashoutMines(sessionId: string) {
   const payout = Math.round(Number(session.bet_amount) * multiplier)
 
   if (payout > 0) {
-    await addCredits(user.id, payout, 'casino_win', `Cancha Minada x${multiplier}, gano $${payout}`)
+    await addCredits(user.id, payout, 'casino_win', `Cancha Minada x${multiplier}, gano $${payout}`, sessionId)
   }
 
   // Relator: cashout con multiplier alto en mines (+ snippet de racha mala quebrada)
