@@ -1,10 +1,43 @@
 import { fetchScores } from '@/lib/odds-api/client'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { addCredits } from '@/lib/credits'
-import { SCORE_SYNC_WINDOW_DAYS } from '@/lib/constants'
+import { SCORE_SYNC_WINDOW_DAYS, type BetPick } from '@/lib/constants'
 import { getMatchesNeedingScoreSync } from './scheduler'
 import { logOddsApiUsage, type UsageTrigger } from '@/lib/odds-api/usage'
 import type { OddsScoreEvent } from '@/lib/odds-api/types'
+
+// Tipos explicitos para el settlement — previenen any-creep en autoResolveMatch.
+// Si el schema cambia, TypeScript lo cacha en compile-time.
+type Winner = 'home' | 'draw' | 'away'
+
+interface PendingBetRow {
+  id: string
+  user_id: string
+  pick: BetPick
+  amount: number
+  odds_at_placement: number
+  potential_payout: number
+}
+
+interface PendingPredictionRow {
+  id: string
+  user_id: string
+  predicted_winner: Winner | null
+  predicted_home_score: number | null
+  predicted_away_score: number | null
+}
+
+interface PendingParlayLegRow {
+  id: string
+  parlay_id: string
+  pick: BetPick
+}
+
+function pickMatchesWinner(pick: BetPick, winner: Winner): boolean {
+  if (winner === 'home') return pick === 'home' || pick === '1'
+  if (winner === 'away') return pick === 'away' || pick === '2'
+  return pick === 'draw' || pick === 'X'
+}
 
 /**
  * Sincroniza scores 1 sola vez por partido contra The Odds API /scores.
@@ -171,13 +204,22 @@ async function incrementSyncAttempts(matchId: string) {
 export async function autoResolveMatch(matchId: string, homeScore: number, awayScore: number) {
   const admin = createAdminClient()
 
-  const winner = homeScore > awayScore ? 'home' : homeScore < awayScore ? 'away' : 'draw'
+  const winner: Winner = homeScore > awayScore ? 'home' : homeScore < awayScore ? 'away' : 'draw'
 
   const { data: config } = await admin.from('scoring_config').select('*').single()
   const correctWinnerPts = config?.correct_winner_points ?? 3
   const exactScorePts = config?.exact_score_points ?? 5
 
-  const { data: predictions } = await admin.from('predictions').select('*').eq('match_id', matchId)
+  // Predictions: guard idempotente usando is_correct IS NULL.
+  // Hoy is_correct arranca como NULL y se setea al resolver. El UPDATE con
+  // .is('is_correct', null) garantiza que solo se transiciona una vez —
+  // si re-corre, el rowcount=0 y no volvemos a sumar total_points.
+  const { data: predictions } = await admin
+    .from('predictions')
+    .select('id, user_id, predicted_winner, predicted_home_score, predicted_away_score')
+    .eq('match_id', matchId)
+    .is('is_correct', null)
+    .returns<PendingPredictionRow[]>()
   for (const pred of predictions ?? []) {
     const isWinnerCorrect = pred.predicted_winner === winner
     const isExactScore = pred.predicted_home_score === homeScore && pred.predicted_away_score === awayScore
@@ -186,9 +228,15 @@ export async function autoResolveMatch(matchId: string, homeScore: number, awayS
     if (isExactScore) points = exactScorePts
     else if (isWinnerCorrect) points = correctWinnerPts
 
-    await admin.from('predictions').update({ is_correct: isWinnerCorrect, points_earned: points }).eq('id', pred.id)
+    const { data: updated } = await admin
+      .from('predictions')
+      .update({ is_correct: isWinnerCorrect, points_earned: points })
+      .eq('id', pred.id)
+      .is('is_correct', null)
+      .select('id')
+      .maybeSingle()
 
-    if (points > 0) {
+    if (updated && points > 0) {
       const { data: profile } = await admin.from('profiles').select('total_points').eq('id', pred.user_id).single()
       if (profile) {
         await admin.from('profiles').update({ total_points: (profile.total_points ?? 0) + points }).eq('id', pred.user_id)
@@ -196,9 +244,14 @@ export async function autoResolveMatch(matchId: string, homeScore: number, awayS
     }
   }
 
-  const { data: bets } = await admin.from('bets').select('*').eq('match_id', matchId).eq('status', 'pending')
+  const { data: bets } = await admin
+    .from('bets')
+    .select('id, user_id, pick, amount, odds_at_placement, potential_payout')
+    .eq('match_id', matchId)
+    .eq('status', 'pending')
+    .returns<PendingBetRow[]>()
   for (const bet of bets ?? []) {
-    const betWon = bet.pick === winner || bet.pick === (winner === 'home' ? '1' : winner === 'away' ? '2' : 'X')
+    const betWon = pickMatchesWinner(bet.pick, winner)
 
     // UPDATE con guard pending devuelve la row solo si transicionamos pending → won/lost.
     // Si otro proceso (cron concurrente, admin retry) ya la resolvio, maybeSingle devuelve null
@@ -216,9 +269,14 @@ export async function autoResolveMatch(matchId: string, homeScore: number, awayS
     }
   }
 
-  const { data: parlayLegs } = await admin.from('parlay_legs').select('*').eq('match_id', matchId).eq('status', 'pending')
+  const { data: parlayLegs } = await admin
+    .from('parlay_legs')
+    .select('id, parlay_id, pick')
+    .eq('match_id', matchId)
+    .eq('status', 'pending')
+    .returns<PendingParlayLegRow[]>()
   for (const leg of parlayLegs ?? []) {
-    const legWon = leg.pick === winner || leg.pick === (winner === 'home' ? '1' : winner === 'away' ? '2' : 'X')
+    const legWon = pickMatchesWinner(leg.pick, winner)
     await admin.from('parlay_legs').update({ status: legWon ? 'won' : 'lost' }).eq('id', leg.id).eq('status', 'pending')
 
     const { data: allLegs } = await admin.from('parlay_legs').select('status').eq('parlay_id', leg.parlay_id)

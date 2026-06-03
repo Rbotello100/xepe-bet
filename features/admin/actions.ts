@@ -53,8 +53,10 @@ export async function resolveMatch(matchId: string, homeScore: number, awayScore
   const correctWinnerPts = config?.correct_winner_points ?? 3
   const exactScorePts = config?.exact_score_points ?? 5
 
-  // Resolve predictions
-  const { data: predictions } = await admin.from('predictions').select('*').eq('match_id', matchId)
+  // Resolve predictions — guard idempotente (mismo patron que autoResolveMatch).
+  // is_correct IS NULL antes de resolver, set después. UPDATE con .is(null) +
+  // rowcount=1 garantiza que la suma a total_points solo pasa una vez.
+  const { data: predictions } = await admin.from('predictions').select('*').eq('match_id', matchId).is('is_correct', null)
   for (const pred of predictions ?? []) {
     const isWinnerCorrect = pred.predicted_winner === winner
     const isExactScore = pred.predicted_home_score === homeScore && pred.predicted_away_score === awayScore
@@ -63,13 +65,12 @@ export async function resolveMatch(matchId: string, homeScore: number, awayScore
     if (isExactScore) points = exactScorePts
     else if (isWinnerCorrect) points = correctWinnerPts
 
-    await admin.from('predictions').update({
+    const { data: updatedPred } = await admin.from('predictions').update({
       is_correct: isWinnerCorrect,
       points_earned: points,
-    }).eq('id', pred.id)
+    }).eq('id', pred.id).is('is_correct', null).select('id').maybeSingle()
 
-    // Update user total points
-    if (points > 0) {
+    if (updatedPred && points > 0) {
       const { data: userProfile } = await admin.from('profiles').select('total_points').eq('id', pred.user_id).single()
       if (userProfile) {
         await admin.from('profiles').update({
