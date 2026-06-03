@@ -2,7 +2,7 @@
 
 import { SectionErrorBoundary } from '@/components/error/SectionErrorBoundary'
 
-export default function RootError({
+export default function CasinoError({
   error,
   reset,
 }: {
@@ -11,10 +11,10 @@ export default function RootError({
 }) {
   return (
     <SectionErrorBoundary
-      section="root"
+      section="casino"
       error={error}
       reset={reset}
-      title="Algo salio mal"
+      title="El casino se cayo"
     />
   )
 }
