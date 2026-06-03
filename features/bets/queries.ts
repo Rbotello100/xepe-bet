@@ -1,20 +1,26 @@
+import { unstable_cache } from 'next/cache'
 import { createServerClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import type { Bet } from '@/lib/types'
 
-export async function getUserBets(userId: string): Promise<Bet[]> {
+// Default limit 50 + opcional offset para paginacion. Antes era unbounded:
+// si un user activo del Mundial llegaba a 1000+ bets, /bets cargaba todos
+// en una sola query. Ahora caps con sensible defaults; el caller que necesite
+// mas paginate via offset.
+export async function getUserBets(userId: string, limit = 50, offset = 0): Promise<Bet[]> {
   const admin = createAdminClient()
   const { data, error } = await admin
     .from('bets')
     .select('*')
     .eq('user_id', userId)
     .order('created_at', { ascending: false })
+    .range(offset, offset + limit - 1)
 
   if (error) throw new Error(error.message)
   return (data ?? []) as Bet[]
 }
 
-export async function getPendingBets(userId: string): Promise<Bet[]> {
+export async function getPendingBets(userId: string, limit = 50): Promise<Bet[]> {
   const admin = createAdminClient()
   const { data, error } = await admin
     .from('bets')
@@ -22,6 +28,7 @@ export async function getPendingBets(userId: string): Promise<Bet[]> {
     .eq('user_id', userId)
     .eq('status', 'pending')
     .order('created_at', { ascending: false })
+    .limit(limit)
 
   if (error) throw new Error(error.message)
   return (data ?? []) as Bet[]
@@ -49,13 +56,14 @@ export interface ParlayWithLegs {
   }[]
 }
 
-export async function getUserParlays(userId: string): Promise<ParlayWithLegs[]> {
+export async function getUserParlays(userId: string, limit = 50, offset = 0): Promise<ParlayWithLegs[]> {
   const admin = createAdminClient()
   const { data, error } = await admin
     .from('parlays')
     .select('*, legs:parlay_legs(*, match:matches!match_id(home_team:teams!home_team_id(name), away_team:teams!away_team_id(name)))')
     .eq('user_id', userId)
     .order('created_at', { ascending: false })
+    .range(offset, offset + limit - 1)
 
   if (error) throw new Error(error.message)
   return (data ?? []) as unknown as ParlayWithLegs[]
@@ -145,22 +153,31 @@ export interface MatchCrowd {
   total: number
 }
 
-export async function getCrowdDistribution(): Promise<Map<string, MatchCrowd>> {
-  const admin = createAdminClient()
-  const { data } = await admin
-    .from('bets')
-    .select('match_id, pick')
-    .eq('status', 'pending')
+// La distribucion no necesita ser real-time — cambia gradualmente. Cachear
+// 30s reduce drásticamente la carga del seq scan de bets pending en cada
+// page load. Como devuelve un Map (no serializable), envolvemos el computo
+// en una funcion que devuelve un Array y reconstruimos el Map al final.
+const _crowdDistArr = unstable_cache(
+  async () => {
+    const admin = createAdminClient()
+    const { data } = await admin.from('bets').select('match_id, pick').eq('status', 'pending')
+    const map = new Map<string, MatchCrowd>()
+    for (const row of (data ?? []) as { match_id: string; pick: string }[]) {
+      if (!row.match_id) continue
+      const cur = map.get(row.match_id) ?? { home: 0, draw: 0, away: 0, total: 0 }
+      if (row.pick === 'home' || row.pick === '1') cur.home++
+      else if (row.pick === 'away' || row.pick === '2') cur.away++
+      else cur.draw++
+      cur.total++
+      map.set(row.match_id, cur)
+    }
+    return [...map.entries()] as [string, MatchCrowd][]
+  },
+  ['crowd-distribution'],
+  { revalidate: 30, tags: ['crowd-distribution'] },
+)
 
-  const map = new Map<string, MatchCrowd>()
-  for (const row of (data ?? []) as { match_id: string; pick: string }[]) {
-    if (!row.match_id) continue
-    const cur = map.get(row.match_id) ?? { home: 0, draw: 0, away: 0, total: 0 }
-    if (row.pick === 'home' || row.pick === '1') cur.home++
-    else if (row.pick === 'away' || row.pick === '2') cur.away++
-    else cur.draw++
-    cur.total++
-    map.set(row.match_id, cur)
-  }
-  return map
+export async function getCrowdDistribution(): Promise<Map<string, MatchCrowd>> {
+  const arr = await _crowdDistArr()
+  return new Map(arr)
 }

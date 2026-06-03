@@ -1,0 +1,29 @@
+name: Warmup cron
+
+# Mantiene calientes las Vercel serverless functions pegando endpoints
+# clave cada 5 min. Sin esto, el primer hit despues de inactividad larga
+# tarda 5-6s (cold start). Con warmup, los users siempre golpean instancias
+# precompiladas.
+#
+# Costo: 4 requests cada 5 min = ~35k requests/mes. Free tier de GitHub
+# Actions cubre sin problemas.
+
+on:
+  schedule:
+    - cron: "*/5 * * * *"
+  workflow_dispatch: {}
+
+jobs:
+  warmup:
+    runs-on: ubuntu-latest
+    timeout-minutes: 1
+    steps:
+      - name: Hit critical endpoints
+        env:
+          SITE_URL: https://xepe-bet-botellorodrigo97-3285s-projects.vercel.app
+        run: |
+          set +e
+          for url in "${SITE_URL}/" "${SITE_URL}/casino" "${SITE_URL}/leaderboard" "${SITE_URL}/predictions"; do
+            STATUS=$(curl -sS -o /dev/null -w "%{http_code}" --max-time 15 "$url")
+            echo "  $url -> HTTP $STATUS"
+          done

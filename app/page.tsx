@@ -17,7 +17,9 @@ export default async function HomePage() {
   const supabase = await createServerClient()
 
   const [feedPosts, leaderboard, bestBet, matchCount, liveCount] = await Promise.all([
-    getActiveFeedPosts(150),
+    // 50 mensajes alcanza para ~3min de rotacion a 4s c/u; bajado de 150 por
+    // performance del SSR (cada mensaje tiene metadata jsonb).
+    getActiveFeedPosts(50),
     getLeaderboard(7),
     getBestBetOfTheDay(),
     supabase.from('matches').select('id', { count: 'exact', head: true }).then(r => r.count ?? 0),
