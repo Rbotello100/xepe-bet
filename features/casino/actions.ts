@@ -288,6 +288,8 @@ export async function startPenaltyGame(bet: number) {
 
   if (error || !session) return { error: 'Error al crear sesion' }
 
+  // Revalidate para que el Header muestre el balance post-deduct.
+  revalidatePath('/casino')
   return { sessionId: session.id, free, firstProb: getPenaltyNextProb(0) }
 }
 
@@ -500,6 +502,8 @@ export async function playScratchCard() {
 
   if (error || !session) return { error: 'Error al crear sesion' }
 
+  // Revalidate por el deduct inicial (si no fue free).
+  revalidatePath('/casino')
   return { sessionId: session.id, cells, free, prizemap: SCRATCH_PRIZEMAP }
 }
 
@@ -655,6 +659,9 @@ export async function startMines(mineCount: number) {
 
   if (error || !session) return { error: 'Error al crear sesion' }
 
+  // Revalidate /casino para que el balance del Header se actualice. Si el user
+  // pierde sin cashear, esto sigue manteniendo la UI consistente con el debit.
+  revalidatePath('/casino')
   return { sessionId: session.id, mineCount, free, gridSize: MINES_GRID_SIZE }
 }
 
@@ -706,6 +713,10 @@ export async function revealMineCell(sessionId: string, cellIndex: number) {
         metadata: { game: 'mines', mineCount: session.mine_count, safeRevealed: safeRevealed.length, result: 'busted' },
       })
     }
+
+    // Revalidate para que el balance del Header refleje que la apuesta se perdio.
+    // Sin esto, el balance UI quedaba con el valor previo al start hasta otra accion.
+    revalidatePath('/casino')
 
     const isFreeBust = session.was_free === true
     return {
