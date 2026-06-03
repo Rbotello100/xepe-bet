@@ -42,6 +42,32 @@ async function getAuthUser() {
 
 function db() { return createAdminClient() }
 
+// Rate limit casino: 1s entre acciones (mismo gap que las bets). Comparte
+// la tabla bet_throttle del fix P1 — no necesita migration nueva. Aplica
+// a cualquier endpoint de casino que modifique creditos/sesiones.
+async function throttleCasino(userId: string): Promise<boolean> {
+  const admin = db()
+  const { data } = await admin.rpc('check_bet_throttle', {
+    p_user_id: userId,
+    p_min_gap_ms: 1000,
+  })
+  return data === true
+}
+
+// Cooldown in-memory por user para los hooks del Relator. Previene que un
+// user spammeando ganancias de slots dispare N llamadas a Anthropic por
+// minuto (cada call cuesta $0.005-0.01). Vive en la instancia de Vercel
+// function — se resetea con cold starts, pero cubre el caso de spam directo.
+const RELATOR_HOOK_COOLDOWN_MS = 60_000  // 1 minuto entre mensajes por user
+const relatorLastHook = new Map<string, number>()
+function canFireRelatorHook(userId: string): boolean {
+  const now = Date.now()
+  const last = relatorLastHook.get(userId) ?? 0
+  if (now - last < RELATOR_HOOK_COOLDOWN_MS) return false
+  relatorLastHook.set(userId, now)
+  return true
+}
+
 async function canPlayToday(userId: string, gameType: string): Promise<boolean> {
   const admin = db()
   const today = new Date().toISOString().split('T')[0]
@@ -169,6 +195,7 @@ function checkWinLines(grid: string[]): { winLine: number[]; symbol: string; pay
 export async function playSlots() {
   const user = await getAuthUser()
   if (!user) return { error: 'No autenticado' }
+  if (!(await throttleCasino(user.id))) return { error: 'Esperá un segundo entre giros' }
 
   const free = await canPlayToday(user.id, 'slots')
   const cost = free ? 0 : SLOTS_COST
@@ -193,7 +220,8 @@ export async function playSlots() {
   // Relator: slots con payout grande (s3 o mejor). Le adjunta el quiebre de
   // racha mala si venia perdiendo 3+ partidas. Llamado ANTES de recordCasinoSession
   // — la query cuenta solo sesiones previas.
-  if (payout >= RELATOR_SLOTS_MIN_PAYOUT) {
+  // canFireRelatorHook: 1 mensaje/user/minuto para evitar spam de Anthropic.
+  if (payout >= RELATOR_SLOTS_MIN_PAYOUT && canFireRelatorHook(user.id)) {
     void (async () => {
       const racha = await rachaCasinoQuiebreSnippet(user.id)
       await generateRelatorMessage({
@@ -250,6 +278,7 @@ function getPenaltyNextProb(goalsScored: number): number {
 export async function startPenaltyGame(bet: number) {
   const user = await getAuthUser()
   if (!user) return { error: 'No autenticado' }
+  if (!(await throttleCasino(user.id))) return { error: 'Esperá un segundo entre acciones' }
 
   // Validacion de monto: finite, positivo, dentro del rango permitido.
   // Evita bet negativo (deductCredits suma en vez de restar) o NaN.
@@ -405,7 +434,7 @@ export async function cashoutPenalty(sessionId: string) {
   await addCredits(user.id, payout, 'casino_win', `Penales retiro con ${session.goals_scored} gol(es), gano $${payout}`, sessionId)
 
   // Relator: cashout grande de penales (+ snippet de racha mala quebrada)
-  if (payout >= RELATOR_PENALTY_MIN_PAYOUT) {
+  if (payout >= RELATOR_PENALTY_MIN_PAYOUT && canFireRelatorHook(user.id)) {
     void (async () => {
       const racha = await rachaCasinoQuiebreSnippet(user.id)
       await generateRelatorMessage({
@@ -449,6 +478,7 @@ const SCRATCH_COST = 15
 export async function playScratchCard() {
   const user = await getAuthUser()
   if (!user) return { error: 'No autenticado' }
+  if (!(await throttleCasino(user.id))) return { error: 'Esperá un segundo entre tarjetas' }
 
   const admin = db()
 
@@ -615,6 +645,7 @@ function calcMinesMultiplier(mineCount: number, safeRevealed: number): number {
 export async function startMines(mineCount: number) {
   const user = await getAuthUser()
   if (!user) return { error: 'No autenticado' }
+  if (!(await throttleCasino(user.id))) return { error: 'Esperá un segundo entre partidas' }
 
   if (!MINES_LEVELS.includes(mineCount)) return { error: 'Cantidad de minas invalida' }
 
@@ -791,7 +822,7 @@ export async function cashoutMines(sessionId: string) {
   }
 
   // Relator: cashout con multiplier alto en mines (+ snippet de racha mala quebrada)
-  if (multiplier >= RELATOR_MINES_MIN_MULTIPLIER && payout > 0) {
+  if (multiplier >= RELATOR_MINES_MIN_MULTIPLIER && payout > 0 && canFireRelatorHook(user.id)) {
     void (async () => {
       const racha = await rachaCasinoQuiebreSnippet(user.id)
       await generateRelatorMessage({
@@ -851,6 +882,7 @@ const FELIPE_MAX_BETS_PER_ROUND = 24 // todas las salas
 export async function placeFelipeBets(bets: FelipeBetInput[]) {
   const user = await getAuthUser()
   if (!user) return { error: 'No autenticado' }
+  if (!(await throttleCasino(user.id))) return { error: 'Esperá un segundo entre rondas' }
 
   if (!Array.isArray(bets) || bets.length === 0) {
     return { error: 'Tenes que apostar a al menos una sala' }
