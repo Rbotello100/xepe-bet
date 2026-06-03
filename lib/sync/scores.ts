@@ -4,6 +4,7 @@ import { addCredits } from '@/lib/credits'
 import { SCORE_SYNC_WINDOW_DAYS, type BetPick } from '@/lib/constants'
 import { getMatchesNeedingScoreSync } from './scheduler'
 import { logOddsApiUsage, type UsageTrigger } from '@/lib/odds-api/usage'
+import { logError } from '@/lib/log/error'
 import type { OddsScoreEvent } from '@/lib/odds-api/types'
 
 // Tipos explicitos para el settlement — previenen any-creep en autoResolveMatch.
@@ -83,6 +84,9 @@ export async function syncFinishedScores(triggeredBy: UsageTrigger = 'cron') {
     } catch (err) {
       errorMsg = (err as Error).message
       apiErrors.push({ sport_key: sportKey, error: errorMsg })
+      // Fallo de la API significa que NINGUN partido de este sport puede settlear
+      // este run. Es bloqueante para el cron — critical.
+      void logError('sync.scores.fetchScores', err, { sportKey, pendingInBucket: matches.length }, 'critical')
     }
 
     await logOddsApiUsage({
@@ -126,6 +130,14 @@ export async function syncFinishedScores(triggeredBy: UsageTrigger = 'cron') {
     if (!parsed) {
       await incrementSyncAttempts(match.id)
       counters.nameMismatch++
+      // Mismatch de nombres = el partido NO se va a resolver automaticamente.
+      // Requiere intervencion manual (admin resolveMatch) o seguira pending.
+      // Critical para apostadores con plata bloqueada.
+      void logError('sync.scores.nameMismatch', 'team_name_not_matched', {
+        matchId: match.id, externalId: match.external_id,
+        eventHome: event.home_team, eventAway: event.away_team,
+        scores: event.scores,
+      }, 'critical')
       return
     }
 
@@ -276,7 +288,14 @@ export async function autoResolveMatch(matchId: string, homeScore: number, awayS
       .maybeSingle()
 
     if (updatedBet && betWon) {
-      await addCredits(bet.user_id, bet.potential_payout, 'win', `Gano apuesta ${bet.pick} x${bet.odds_at_placement}`, bet.id)
+      const paid = await addCredits(bet.user_id, bet.potential_payout, 'win', `Gano apuesta ${bet.pick} x${bet.odds_at_placement}`, bet.id)
+      if (!paid.success) {
+        // Bet quedo marcada como won pero el pago fallo — descuadre balance vs ledger.
+        // Critical: aparecera en el panel de observabilidad bajo "diff balance vs ledger".
+        void logError('sync.autoResolveMatch.paymentFailed', paid.error ?? 'unknown', {
+          betId: bet.id, userId: bet.user_id, amount: bet.potential_payout, matchId,
+        }, 'critical')
+      }
     }
   }))
 
@@ -328,9 +347,19 @@ export async function autoResolveMatch(matchId: string, homeScore: number, awayS
 
         if (updatedParlay) {
           if (newStatus === 'won') {
-            await addCredits(parlay.user_id, parlay.potential_payout, 'win', `Gano parlay x${parlay.total_odds}`, parlay.id)
+            const paid = await addCredits(parlay.user_id, parlay.potential_payout, 'win', `Gano parlay x${parlay.total_odds}`, parlay.id)
+            if (!paid.success) {
+              void logError('sync.autoResolveMatch.parlayPaymentFailed', paid.error ?? 'unknown', {
+                parlayId: parlay.id, userId: parlay.user_id, amount: parlay.potential_payout, matchId,
+              }, 'critical')
+            }
           } else if (newStatus === 'void') {
-            await addCredits(parlay.user_id, parlay.amount, 'refund', `Parlay void: leg cancelada`, parlay.id)
+            const refunded = await addCredits(parlay.user_id, parlay.amount, 'refund', `Parlay void: leg cancelada`, parlay.id)
+            if (!refunded.success) {
+              void logError('sync.autoResolveMatch.parlayRefundFailed', refunded.error ?? 'unknown', {
+                parlayId: parlay.id, userId: parlay.user_id, amount: parlay.amount, matchId,
+              }, 'critical')
+            }
           }
         }
       }

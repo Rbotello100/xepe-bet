@@ -18,6 +18,7 @@ import { calculateCashOut } from '@/lib/utils/cash-out'
 import { resolveServerOdds, oddsWithinTolerance } from '@/lib/utils/resolve-pick-odds'
 import { generateRelatorMessage } from '@/lib/relator/generate-message'
 import { getRachaUsuario } from '@/features/relator/stats'
+import { logError } from '@/lib/log/error'
 import type { BetInput, ParlayInput } from './types'
 
 // Umbrales para que el Relator no spamee con cada accion chica.
@@ -101,8 +102,16 @@ export async function placeBet(input: BetInput) {
   if (!user) return { error: 'No autenticado' }
   if (input.amount < MIN_BET) return { error: `Apuesta minima: $${MIN_BET}` }
   if (input.amount > MAX_BET) return { error: `Apuesta maxima: $${MAX_BET}` }
-  if (!isValidPick(input.pick)) return { error: 'Pick invalido' }
-  if (!isUUID(input.match_id)) return { error: 'ID de partido invalido' }
+  // Pick/UUID invalidos viniendo del server = bypass del UI (el form previene esto).
+  // Posible bot o cliente manipulado — logueamos como warn para detectar patrones.
+  if (!isValidPick(input.pick)) {
+    void logError('bets.placeBet', 'invalid_pick_bypass', { userId: user.id, pick: input.pick }, 'warn')
+    return { error: 'Pick invalido' }
+  }
+  if (!isUUID(input.match_id)) {
+    void logError('bets.placeBet', 'invalid_uuid_bypass', { userId: user.id, matchId: input.match_id }, 'warn')
+    return { error: 'ID de partido invalido' }
+  }
   if (!(await throttleOk(user.id))) return { error: 'Esperá un segundo entre apuestas' }
 
   const admin = db()
@@ -136,6 +145,9 @@ export async function placeBet(input: BetInput) {
   })
 
   if (error || !data || data.length === 0) {
+    void logError('bets.placeBet', error ?? 'rpc_empty_result', {
+      userId: user.id, matchId: input.match_id, pick: input.pick, amount: input.amount,
+    })
     return { error: error?.message ?? 'Error al crear apuesta' }
   }
 
@@ -147,6 +159,14 @@ export async function placeBet(input: BetInput) {
     error_code: string | null
   }
   if (!result.success) {
+    // Solo logueamos los error_codes que NO son flow normal del usuario.
+    // insufficient_credits / match_*/bets_locked son esperables, no son fallos del sistema.
+    const code = result.error_code
+    if (code && !['insufficient_credits', 'match_finished', 'match_cancelled', 'match_live', 'bets_locked'].includes(code)) {
+      void logError('bets.placeBet', `rpc_returned_${code}`, {
+        userId: user.id, matchId: input.match_id, pick: input.pick, amount: input.amount,
+      }, code === 'invalid_pick' || code === 'invalid_amount' ? 'warn' : 'error')
+    }
     return { error: mapBetErrorCode(result.error_code) }
   }
 
@@ -215,7 +235,9 @@ export async function cashOutBet(betId: string) {
 
   const cashOutValue = Math.round(calculateCashOut(bet.odds_at_placement, currentOdds, bet.amount) * 100) / 100
   if (!Number.isFinite(cashOutValue) || cashOutValue <= 0) {
-    console.error('[cashOutBet] invalid calc', { betId, oddsAt: bet.odds_at_placement, current: currentOdds, amount: bet.amount, result: cashOutValue })
+    void logError('bets.cashOutBet', 'invalid_calc', {
+      betId, oddsAt: bet.odds_at_placement, current: currentOdds, amount: bet.amount, result: cashOutValue,
+    })
     return { error: 'Cash out no disponible' }
   }
 
@@ -224,7 +246,11 @@ export async function cashOutBet(betId: string) {
   // algo absurdo (bug, manipulacion de odds), aborta antes de pagar.
   const maxPayout = Number(bet.amount) * Number(bet.odds_at_placement)
   if (cashOutValue > maxPayout + 0.01) {
-    console.error('[cashOutBet] cashout > potential payout', { betId, cashOutValue, maxPayout })
+    // CRITICAL: posible exploit. El usuario logro forzar un cashout > payout maximo
+    // teorico. Es defensa en profundidad pero la TX se aborto a tiempo.
+    void logError('bets.cashOutBet', 'cashout_exceeds_max_payout', {
+      betId, userId: user.id, cashOutValue, maxPayout,
+    }, 'critical')
     return { error: 'Cash out no disponible' }
   }
 
@@ -238,11 +264,17 @@ export async function cashOutBet(betId: string) {
   })
 
   if (error || !data || data.length === 0) {
+    void logError('bets.cashOutBet', error ?? 'rpc_empty_result', { betId, userId: user.id, cashOutValue })
     return { error: error?.message ?? 'Error al procesar cash out' }
   }
 
   const result = data[0] as { success: boolean; new_balance: number | null; error_code: string | null }
   if (!result.success) {
+    const code = result.error_code
+    // bet_not_cashable es esperable (race, ya procesada). El resto = anomalia.
+    if (code && code !== 'bet_not_cashable') {
+      void logError('bets.cashOutBet', `rpc_returned_${code}`, { betId, userId: user.id, cashOutValue })
+    }
     return { error: mapBetErrorCode(result.error_code) }
   }
 
@@ -272,8 +304,14 @@ export async function placeParlay(input: ParlayInput) {
   if (input.legs.length > MAX_PARLAY_LEGS) return { error: `Maximo ${MAX_PARLAY_LEGS} selecciones` }
   if (input.amount < MIN_BET) return { error: `Apuesta minima: $${MIN_BET}` }
   if (input.amount > MAX_BET) return { error: `Apuesta maxima: $${MAX_BET}` }
-  if (input.legs.some(l => !isValidPick(l.pick))) return { error: 'Pick invalido en alguna seleccion' }
-  if (input.legs.some(l => !isUUID(l.match_id))) return { error: 'ID de partido invalido en alguna seleccion' }
+  if (input.legs.some(l => !isValidPick(l.pick))) {
+    void logError('bets.placeParlay', 'invalid_pick_bypass', { userId: user.id, picks: input.legs.map(l => l.pick) }, 'warn')
+    return { error: 'Pick invalido en alguna seleccion' }
+  }
+  if (input.legs.some(l => !isUUID(l.match_id))) {
+    void logError('bets.placeParlay', 'invalid_uuid_bypass', { userId: user.id, matchIds: input.legs.map(l => l.match_id) }, 'warn')
+    return { error: 'ID de partido invalido en alguna seleccion' }
+  }
   if (!(await throttleOk(user.id))) return { error: 'Esperá un segundo entre apuestas' }
 
   const admin = db()
@@ -323,6 +361,9 @@ export async function placeParlay(input: ParlayInput) {
   })
 
   if (error || !data || data.length === 0) {
+    void logError('bets.placeParlay', error ?? 'rpc_empty_result', {
+      userId: user.id, legCount: serverLegs.length, amount: input.amount, totalOdds,
+    })
     return { error: error?.message ?? 'Error al crear parlay' }
   }
 
@@ -334,6 +375,12 @@ export async function placeParlay(input: ParlayInput) {
     error_code: string | null
   }
   if (!result.success) {
+    const code = result.error_code
+    if (code && !['insufficient_credits', 'match_finished', 'match_cancelled', 'match_live', 'bets_locked'].includes(code)) {
+      void logError('bets.placeParlay', `rpc_returned_${code}`, {
+        userId: user.id, legCount: serverLegs.length, amount: input.amount, totalOdds,
+      })
+    }
     return { error: mapBetErrorCode(result.error_code) }
   }
 
