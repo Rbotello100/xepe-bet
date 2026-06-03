@@ -99,29 +99,51 @@ export function SlotsGame({ credits }: { credits: number }) {
     setResult(null)
     setStoppedCols(new Set())
 
-    // Animar todas las celdas con símbolos aleatorios
+    // Animar todas las celdas con simbolos aleatorios
     intervalRef.current = setInterval(() => {
       setGrid(Array.from({ length: 9 }, () => ALL_SYMS[Math.floor(Math.random() * ALL_SYMS.length)]))
     }, 80)
 
-    // Llamar al servidor
-    const res = await playSlots()
+    // Helper de cleanup robusto: garantiza que el interval se limpia y
+    // setSpinning vuelve a false aunque la action throwee. Sin esto, un
+    // error del server dejaba el UI colgado en "Girando..." con los
+    // colores rotando sin parar.
+    const cleanup = () => {
+      if (intervalRef.current) {
+        clearInterval(intervalRef.current)
+        intervalRef.current = null
+      }
+    }
 
-    if (intervalRef.current) clearInterval(intervalRef.current)
+    let res: Awaited<ReturnType<typeof playSlots>>
+    try {
+      res = await playSlots()
+    } catch (err) {
+      cleanup()
+      setSpinning(false)
+      console.error('[SlotsGame] playSlots threw', err)
+      return
+    }
+
+    cleanup()
 
     if ('error' in res && res.error) {
       setSpinning(false)
       return
     }
 
-    const finalGrid = res.grid!
+    if (!res.grid) {
+      setSpinning(false)
+      console.error('[SlotsGame] playSlots returned without grid', res)
+      return
+    }
 
-    // Detener columna por columna
+    const finalGrid = res.grid
+
     const stopCol = (col: number) => {
       setStoppedCols(prev => new Set([...prev, col]))
       setGrid(prev => {
         const next = [...prev]
-        // Actualizar las 3 celdas de esta columna (índices col, col+3, col+6)
         next[col]     = finalGrid[col]
         next[col + 3] = finalGrid[col + 3]
         next[col + 6] = finalGrid[col + 6]

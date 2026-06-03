@@ -216,7 +216,7 @@ export async function playSlots() {
     metadata: { game: 'slots', grid, winLine: win?.winLine ?? null, symbol: win?.symbol ?? null, payout, free },
   })
 
-  revalidatePath('/casino')
+  revalidatePath('/', 'layout')
   return {
     grid,
     winLine: win?.winLine ?? null,
@@ -289,7 +289,7 @@ export async function startPenaltyGame(bet: number) {
   if (error || !session) return { error: 'Error al crear sesion' }
 
   // Revalidate para que el Header muestre el balance post-deduct.
-  revalidatePath('/casino')
+  revalidatePath('/', 'layout')
   return { sessionId: session.id, free, firstProb: getPenaltyNextProb(0) }
 }
 
@@ -375,7 +375,7 @@ export async function takePenaltyKick(sessionId: string, kickedZone: number) {
     })
   }
 
-  revalidatePath('/casino')
+  revalidatePath('/', 'layout')
   const isFreeMiss = session.was_free === true
   return { isGoal: false, coveredZones, kickedZone, multiplier: 0, nextProb: 0, sessionId, isFree: isFreeMiss }
 }
@@ -433,7 +433,7 @@ export async function cashoutPenalty(sessionId: string) {
     metadata: { game: 'penalty', goalsScored: session.goals_scored, bet: session.bet_amount, multiplier, payout },
   })
 
-  revalidatePath('/casino')
+  revalidatePath('/', 'layout')
   const isFree = session.was_free === true
   return { payout, multiplier, goalsScored: session.goals_scored, isFree }
 }
@@ -503,7 +503,7 @@ export async function playScratchCard() {
   if (error || !session) return { error: 'Error al crear sesion' }
 
   // Revalidate por el deduct inicial (si no fue free).
-  revalidatePath('/casino')
+  revalidatePath('/', 'layout')
   return { sessionId: session.id, cells, free, prizemap: SCRATCH_PRIZEMAP }
 }
 
@@ -579,7 +579,7 @@ export async function claimScratchPrize(sessionId: string) {
     metadata: { game: 'scratch', symbol: session.prize_symbol, payout },
   })
 
-  revalidatePath('/casino')
+  revalidatePath('/', 'layout')
   return { payout }
 }
 
@@ -661,7 +661,7 @@ export async function startMines(mineCount: number) {
 
   // Revalidate /casino para que el balance del Header se actualice. Si el user
   // pierde sin cashear, esto sigue manteniendo la UI consistente con el debit.
-  revalidatePath('/casino')
+  revalidatePath('/', 'layout')
   return { sessionId: session.id, mineCount, free, gridSize: MINES_GRID_SIZE }
 }
 
@@ -716,7 +716,7 @@ export async function revealMineCell(sessionId: string, cellIndex: number) {
 
     // Revalidate para que el balance del Header refleje que la apuesta se perdio.
     // Sin esto, el balance UI quedaba con el valor previo al start hasta otra accion.
-    revalidatePath('/casino')
+    revalidatePath('/', 'layout')
 
     const isFreeBust = session.was_free === true
     return {
@@ -819,7 +819,7 @@ export async function cashoutMines(sessionId: string) {
     metadata: { game: 'mines', mineCount: session.mine_count, safeRevealed: safeRevealed.length, multiplier, payout },
   })
 
-  revalidatePath('/casino')
+  revalidatePath('/', 'layout')
 
   const isFree = session.was_free === true
   return {
@@ -1003,7 +1003,7 @@ export async function revealFelipe(sessionId: string) {
     },
   })
 
-  revalidatePath('/casino')
+  revalidatePath('/', 'layout')
   return {
     winningRoom,
     winningRoomName: winningRoomData.name,
