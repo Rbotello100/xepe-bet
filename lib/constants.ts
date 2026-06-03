@@ -20,6 +20,10 @@ export const MAX_PARLAY_ODDS = 1000      // multiplicador total maximo (10 legs 
 export const MAX_PARLAY_PAYOUT = 50000   // tope al premio potencial en USD
 
 // --- Time Locks ---
+// IMPORTANTE: BET_LOCK_HOURS se duplica en SQL como `interval '1 hour'` en la RPC
+// `place_bet_atomic` (migration 20260601061926_atomic_bets_v2.sql). Si cambias este
+// valor, crea una migration que actualice la RPC en paralelo, sino la UX y la
+// validacion server-side quedan desincronizadas.
 export const BET_LOCK_HOURS = 1        // bets close 1h before kickoff
 export const PREDICTION_LOCK_HOURS = 24 // predictions lock 24h before kickoff
 

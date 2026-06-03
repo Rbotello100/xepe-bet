@@ -69,13 +69,25 @@ export function MatchCard({ match, dist, pool }: MatchCardProps) {
         isLive ? 'border-win/40' : 'border-card-border hover:border-accent/45'
       }`}
     >
-      {/* top — clickeable -> /match/[id] */}
-      <Link href={`/match/${match.id}`} className="mb-[11px] flex items-center justify-between">
+      {/* top — clickeable -> /match/[id]. En knockout (r32+) mostramos pill
+          "90 MIN" para dejar explicito que las cuotas 1X2 cierran a los 90 min
+          + tiempo anadido — extra time y penales NO cuentan (industry standard:
+          FanDuel, DraftKings, Bet365, Pinnacle). */}
+      <Link href={`/match/${match.id}`} className="mb-[11px] flex items-center justify-between gap-2">
         <span className="text-xs text-subtle">
           {match.group_name ? `Grupo ${match.group_name}` : match.round}
           {' · '}
           {formatDate(match.starts_at)}
         </span>
+        <span className="flex items-center gap-1.5">
+        {match.round && match.round !== 'group' && (
+          <span
+            title="Las apuestas 1X2 cierran a los 90 min + tiempo añadido. Extra time y penales NO cuentan."
+            className="hidden sm:inline-flex items-center rounded-full border border-gold/30 bg-gold/10 px-2 py-[2px] text-[10px] font-bold tracking-wide text-gold"
+          >
+            90 MIN
+          </span>
+        )}
         {isLive ? (
           <span className="inline-flex items-center gap-1.5 rounded-full border border-win/30 bg-win/15 px-2.5 py-[3px] text-[11px] font-semibold text-win">
             <span className="h-1.5 w-1.5 rounded-full bg-win" style={{ animation: 'live-pulse 1.6s infinite' }} />
@@ -94,6 +106,7 @@ export function MatchCard({ match, dist, pool }: MatchCardProps) {
             Programado
           </span>
         )}
+        </span>
       </Link>
 
       {/* teams — clickeable -> /match/[id] */}
