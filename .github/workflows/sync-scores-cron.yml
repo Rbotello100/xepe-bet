@@ -1,0 +1,40 @@
+name: Sync scores cron
+
+# Dispara /api/cron/sync-scores cada 4 horas para liquidar partidos terminados.
+# Antes solo había Vercel cron diario (1x/día), pero la API externa de /scores
+# devuelve max 3 días atrás. Si 3 días seguidos falla, perdemos el partido.
+# Con GitHub Actions cada 4h tenemos ~18 oportunidades por partido — margen
+# de sobra para que algun intento exitoso lo capture.
+#
+# Endpoint: /api/cron/sync-scores con Bearer CRON_SECRET.
+# Complementario al Vercel cron — no se duplica porque syncFinishedScores es
+# idempotente (UPDATE con guard status='pending').
+
+on:
+  schedule:
+    - cron: "0 */4 * * *"
+  workflow_dispatch: {}
+
+jobs:
+  trigger-sync:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Hit sync-scores endpoint
+        env:
+          CRON_SECRET: ${{ secrets.CRON_SECRET }}
+          SITE_URL: https://xepe-bet-botellorodrigo97-3285s-projects.vercel.app
+        run: |
+          set -e
+          echo "→ Disparando sync-scores en ${SITE_URL}"
+          STATUS=$(curl -sS -o /tmp/resp.json -w "%{http_code}" \
+            -X POST "${SITE_URL}/api/cron/sync-scores" \
+            -H "Authorization: Bearer ${CRON_SECRET}" \
+            --max-time 240 || echo "000")
+          echo "HTTP ${STATUS}"
+          cat /tmp/resp.json | head -c 600 || true
+          echo ""
+          if [ "${STATUS}" != "200" ]; then
+            echo "::warning::Cron devolvio HTTP ${STATUS}, revisar el endpoint"
+            exit 1
+          fi
