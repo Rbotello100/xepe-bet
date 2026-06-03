@@ -1,0 +1,36 @@
+name: Relator templates cron
+
+# Refresca los mensajes determinísticos del Relator (sin IA) cada 15 min.
+# Hace 100+ mensajes a partir de queries reales — costo CERO de Anthropic.
+# Independiente del workflow `relator-cron.yml` (ese llama Anthropic c/30min).
+#
+# Endpoint: /api/cron/refresh-templates con Bearer CRON_SECRET.
+
+on:
+  schedule:
+    - cron: "*/15 * * * *"
+  workflow_dispatch: {}
+
+jobs:
+  trigger-templates:
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    steps:
+      - name: Hit refresh-templates endpoint
+        env:
+          CRON_SECRET: ${{ secrets.CRON_SECRET }}
+          SITE_URL: https://xepe-bet-botellorodrigo97-3285s-projects.vercel.app
+        run: |
+          set -e
+          echo "→ Disparando refresh-templates en ${SITE_URL}"
+          STATUS=$(curl -sS -o /tmp/resp.json -w "%{http_code}" \
+            -X POST "${SITE_URL}/api/cron/refresh-templates" \
+            -H "Authorization: Bearer ${CRON_SECRET}" \
+            --max-time 60 || echo "000")
+          echo "HTTP ${STATUS}"
+          cat /tmp/resp.json | head -c 400 || true
+          echo ""
+          if [ "${STATUS}" != "200" ]; then
+            echo "::warning::Cron devolvio HTTP ${STATUS}, revisar el endpoint"
+            exit 1
+          fi

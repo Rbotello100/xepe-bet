@@ -242,14 +242,20 @@ Responde ESTRICTAMENTE en formato JSON, sin markdown, sin explicacion, solo el a
       return { generated: 0, error: 'Ningun post valido en la respuesta' }
     }
 
-    // Desactivar viejos e insertar nuevos en una sola operacion
-    await db.from('ai_feed').update({ is_active: false }).eq('is_active', true)
+    // Desactivar SOLO los AI viejos (no tocar templates ni mensajes on-event).
+    // Mensajes sin metadata son zombis pre-split source → tambien se desactivan.
+    await db
+      .from('ai_feed')
+      .update({ is_active: false })
+      .eq('is_active', true)
+      .or('metadata->>source.eq.ai,metadata.is.null')
 
     const { error: insertErr } = await db.from('ai_feed').insert(
       clean.map((p) => ({
         kind: p.kind,
         content: p.content,
         is_active: true,
+        metadata: { source: 'ai' },
       })),
     )
 

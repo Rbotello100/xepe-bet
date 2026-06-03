@@ -53,6 +53,7 @@ export async function generateRelatorMessage(event: RelatorEvent): Promise<void>
       kind: event.kind,
       content,
       is_active: true,
+      metadata: { source: 'ai' },
     })
   } catch (err) {
     // Fire-and-forget: log pero NO propagamos error al caller

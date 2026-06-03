@@ -44,7 +44,8 @@ export function Relator({ messages, quiet = true }: RelatorProps) {
     cursor.current = messages.length
   }, [messages])
 
-  // Stream: cada ~5.2s entra un mensaje nuevo (rota el array fuente)
+  // Stream: cada ~4s entra un mensaje nuevo (rota el array fuente).
+  // Con ~150 mensajes activos, un mismo mensaje vuelve a aparecer recien a los ~10min.
   useEffect(() => {
     if (messages.length === 0) return
     let t: ReturnType<typeof setTimeout>
@@ -58,11 +59,11 @@ export function Relator({ messages, quiet = true }: RelatorProps) {
         setTyping(false)
         setSpeaking(true)
         clearTimeout(sp)
-        sp = setTimeout(() => setSpeaking(false), 2400)
-        t = setTimeout(loop, 5200)
-      }, 1300)
+        sp = setTimeout(() => setSpeaking(false), 2000)
+        t = setTimeout(loop, 4000)
+      }, 900)
     }
-    t = setTimeout(loop, 4000)
+    t = setTimeout(loop, 3000)
     return () => { clearTimeout(t); clearTimeout(sp) }
   }, [messages])
 

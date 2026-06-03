@@ -17,7 +17,7 @@ export default async function HomePage() {
   const supabase = await createServerClient()
 
   const [feedPosts, leaderboard, bestBet, matchCount, liveCount] = await Promise.all([
-    getActiveFeedPosts(10),
+    getActiveFeedPosts(150),
     getLeaderboard(7),
     getBestBetOfTheDay(),
     supabase.from('matches').select('id', { count: 'exact', head: true }).then(r => r.count ?? 0),
