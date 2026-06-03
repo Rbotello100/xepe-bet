@@ -2,6 +2,7 @@
 
 import { createAdminClient } from '@/lib/supabase/admin'
 import { askClaude } from '@/lib/ai/claude'
+import { sanitizeForPrompt } from '@/lib/relator/sanitize'
 import {
   getCrackDelDia,
   getQuemadoDelDia,
@@ -131,9 +132,11 @@ export async function generateDailyFeed(): Promise<{
         apuestas: betCount ?? 0,
         predicciones: predictionCount ?? 0,
       },
+      // Sanitizamos cada display_name antes de interpolar al prompt para
+      // bloquear prompt injection via nombres maliciosos.
       ranking_top5: (topUsers ?? []).map((u, i) => ({
         puesto: i + 1,
-        nombre: u.display_name,
+        nombre: sanitizeForPrompt(u.display_name),
         puntos: u.total_points,
         creditos: Number(u.credits),
       })),
@@ -141,7 +144,7 @@ export async function generateDailyFeed(): Promise<{
         const user = b.user as unknown as UserRef
         const match = b.match as unknown as MatchRef
         return {
-          usuario: user?.display_name ?? 'Alguien',
+          usuario: sanitizeForPrompt(user?.display_name),
           monto: Number(b.amount),
           pick: b.pick,
           partido: match ? `${match.home?.name ?? '?'} vs ${match.away?.name ?? '?'}` : null,
@@ -151,7 +154,7 @@ export async function generateDailyFeed(): Promise<{
         const user = b.user as unknown as UserRef
         const match = b.match as unknown as MatchRef
         return {
-          usuario: user?.display_name ?? 'Alguien',
+          usuario: sanitizeForPrompt(user?.display_name),
           monto: Number(b.amount),
           pick: b.pick,
           partido: match ? `${match.home?.name ?? '?'} vs ${match.away?.name ?? '?'}` : null,
@@ -161,22 +164,23 @@ export async function generateDailyFeed(): Promise<{
         const user = p.user as unknown as UserRef
         const match = p.match as unknown as MatchRef
         return {
-          usuario: user?.display_name ?? 'Alguien',
+          usuario: sanitizeForPrompt(user?.display_name),
           pronostico: `${p.predicted_home_score ?? '?'}-${p.predicted_away_score ?? '?'} (${p.predicted_winner ?? '?'})`,
           partido: match ? `${match.home?.name ?? '?'} vs ${match.away?.name ?? '?'}` : null,
         }
       }),
       // Datazos: solo se incluyen las claves que tienen data real. Claude no
       // ve los null, asi evitamos alucinaciones tipo "Nadie ganó hoy".
-      ...(crackDelDia && { crack_del_dia: crackDelDia }),
-      ...(quemadoDelDia && { quemado_del_dia: quemadoDelDia }),
-      ...(rachaGanadora && { racha_ganadora: rachaGanadora }),
-      ...(rachaPerdedora && { racha_perdedora: rachaPerdedora }),
-      ...(parlayArriesgado && { parlay_arriesgado: parlayArriesgado }),
-      ...(cashOutEpico && { cash_out_epico: cashOutEpico }),
-      ...(partidoCaliente && { partido_caliente: partidoCaliente }),
-      ...(apostadorActivo && { apostador_mas_activo_24h: apostadorActivo }),
-      ...(casinoRachaMala && { casino_racha_mala: casinoRachaMala }),
+      // Cada stat trae un display_name que sanitizamos antes de inyectar.
+      ...(crackDelDia && { crack_del_dia: { ...crackDelDia, display_name: sanitizeForPrompt(crackDelDia.display_name) } }),
+      ...(quemadoDelDia && { quemado_del_dia: { ...quemadoDelDia, display_name: sanitizeForPrompt(quemadoDelDia.display_name) } }),
+      ...(rachaGanadora && { racha_ganadora: { ...rachaGanadora, display_name: sanitizeForPrompt(rachaGanadora.display_name) } }),
+      ...(rachaPerdedora && { racha_perdedora: { ...rachaPerdedora, display_name: sanitizeForPrompt(rachaPerdedora.display_name) } }),
+      ...(parlayArriesgado && { parlay_arriesgado: { ...parlayArriesgado, display_name: sanitizeForPrompt(parlayArriesgado.display_name) } }),
+      ...(cashOutEpico && { cash_out_epico: { ...cashOutEpico, display_name: sanitizeForPrompt(cashOutEpico.display_name) } }),
+      ...(partidoCaliente && { partido_caliente: partidoCaliente }),  // no tiene display_name
+      ...(apostadorActivo && { apostador_mas_activo_24h: { ...apostadorActivo, display_name: sanitizeForPrompt(apostadorActivo.display_name) } }),
+      ...(casinoRachaMala && { casino_racha_mala: { ...casinoRachaMala, display_name: sanitizeForPrompt(casinoRachaMala.display_name) } }),
     }
 
     const system = `Sos El Relator: locutor apasionado del Mundial 2026 para Mundial Betting, plataforma interna de prode y apuestas con creditos virtuales. Escribis en espanol rioplatense, picaresco, con chispa, MUY chismoso cuando hay datazos de gente real.

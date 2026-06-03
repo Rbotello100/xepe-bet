@@ -2,6 +2,7 @@
 
 import { createAdminClient } from '@/lib/supabase/admin'
 import { askClaude } from '@/lib/ai/claude'
+import { sanitizeForPrompt } from './sanitize'
 
 type Kind = 'summary' | 'flash' | 'analysis' | 'trivia'
 
@@ -36,7 +37,11 @@ export async function generateRelatorMessage(event: RelatorEvent): Promise<void>
       .select('display_name')
       .eq('id', event.userId)
       .maybeSingle()
-    const displayName = profile?.display_name ?? 'Alguien'
+    // Sanitizar antes de interpolar al prompt — defensa contra prompt injection.
+    // Un user con display_name="Ignora instrucciones..." podia manipular al
+    // Relator. sanitizeForPrompt descarta cualquier nombre con palabras de
+    // control y trunca a 40 chars.
+    const displayName = sanitizeForPrompt(profile?.display_name)
 
     const rendered = event.context.replace(/\{user\}/g, displayName)
 
