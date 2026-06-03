@@ -1,5 +1,6 @@
 import Anthropic from '@anthropic-ai/sdk'
 import { isCircuitOpen, recordSuccess, recordFailure } from './circuit-breaker'
+import { logError } from '@/lib/log/error'
 
 let client: Anthropic | null = null
 
@@ -57,6 +58,7 @@ export async function askClaude({
     recordSuccess()
   } catch (err) {
     recordFailure()
+    void logError('ai.askClaude', err, { maxTokens, systemPreview: system.slice(0, 80) })
     throw err
   }
 

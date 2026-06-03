@@ -1,6 +1,7 @@
 'use server'
 
 import { createAdminClient } from '@/lib/supabase/admin'
+import { logError } from '@/lib/log/error'
 
 /**
  * Operaciones de creditos con audit trail.
@@ -81,6 +82,7 @@ export async function addCredits(
       const balance = await getBalance(userId)
       return { success: true, newBalance: balance }
     }
+    void logError('credits.addCredits', error ?? 'empty result', { userId, amount, type, referenceId })
     return { success: false, newBalance: 0, error: error?.message ?? 'Error al acreditar' }
   }
 
@@ -120,6 +122,7 @@ export async function deductCredits(
   })
 
   if (error || !data || data.length === 0) {
+    void logError('credits.deductCredits', error ?? 'empty result', { userId, amount, type, referenceId })
     return { success: false, newBalance: 0, error: error?.message ?? 'Error al descontar' }
   }
 

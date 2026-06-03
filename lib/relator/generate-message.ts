@@ -3,6 +3,7 @@
 import { createAdminClient } from '@/lib/supabase/admin'
 import { askClaude } from '@/lib/ai/claude'
 import { sanitizeForPrompt } from './sanitize'
+import { logError } from '@/lib/log/error'
 
 type Kind = 'summary' | 'flash' | 'analysis' | 'trivia'
 
@@ -63,5 +64,6 @@ export async function generateRelatorMessage(event: RelatorEvent): Promise<void>
   } catch (err) {
     // Fire-and-forget: log pero NO propagamos error al caller
     console.warn('[Relator] no se pudo generar mensaje:', err instanceof Error ? err.message : err)
+    void logError('relator.generateMessage', err, { kind: event.kind, userId: event.userId }, 'warn')
   }
 }

@@ -3,6 +3,7 @@
 import { createAdminClient } from '@/lib/supabase/admin'
 import { askClaude } from '@/lib/ai/claude'
 import { sanitizeForPrompt } from '@/lib/relator/sanitize'
+import { logError } from '@/lib/log/error'
 import {
   getCrackDelDia,
   getQuemadoDelDia,
@@ -270,6 +271,7 @@ Responde ESTRICTAMENTE en formato JSON, sin markdown, sin explicacion, solo el a
     return { generated: clean.length }
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err)
+    void logError('ai-feed.generateDailyFeed', err)
     return { generated: 0, error: message }
   }
 }

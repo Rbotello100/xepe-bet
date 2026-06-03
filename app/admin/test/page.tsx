@@ -61,9 +61,17 @@ export default async function AdminTestPage() {
     <>
       <Header user={profile ? { ...profile, total_points: profile.total_points ?? 0 } : null} />
       <div className="mx-auto max-w-2xl px-4 py-6 space-y-6">
-        <div>
-          <h1 className="text-2xl font-bold text-white">Panel de Testing</h1>
-          <p className="text-sm text-slate-400 mt-1">Admin: {user.email}</p>
+        <div className="flex justify-between items-start">
+          <div>
+            <h1 className="text-2xl font-bold text-white">Panel de Testing</h1>
+            <p className="text-sm text-slate-400 mt-1">Admin: {user.email}</p>
+          </div>
+          <a
+            href="/admin/observability"
+            className="rounded-md border border-accent/30 bg-accent/10 px-3 py-1.5 text-xs font-bold text-accent-deep hover:bg-accent/20"
+          >
+            📊 Observabilidad
+          </a>
         </div>
 
         {/* System stats */}

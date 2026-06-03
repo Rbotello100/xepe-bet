@@ -439,6 +439,8 @@ export async function refreshTemplateFeed(): Promise<{ generated: number; error?
 
     return { generated: posts.length }
   } catch (err) {
+    const { logError } = await import('@/lib/log/error')
+    void logError('relator.refreshTemplateFeed', err)
     return { generated: 0, error: err instanceof Error ? err.message : String(err) }
   }
 }
