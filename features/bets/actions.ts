@@ -12,6 +12,7 @@ import {
   MAX_PARLAY_ODDS,
   MAX_PARLAY_PAYOUT,
   isValidPick,
+  isUUID,
 } from '@/lib/constants'
 import { calculateCashOut } from '@/lib/utils/cash-out'
 import { resolveServerOdds, oddsWithinTolerance } from '@/lib/utils/resolve-pick-odds'
@@ -101,6 +102,7 @@ export async function placeBet(input: BetInput) {
   if (input.amount < MIN_BET) return { error: `Apuesta minima: $${MIN_BET}` }
   if (input.amount > MAX_BET) return { error: `Apuesta maxima: $${MAX_BET}` }
   if (!isValidPick(input.pick)) return { error: 'Pick invalido' }
+  if (!isUUID(input.match_id)) return { error: 'ID de partido invalido' }
   if (!(await throttleOk(user.id))) return { error: 'Esperá un segundo entre apuestas' }
 
   const admin = db()
@@ -179,6 +181,7 @@ export async function placeBet(input: BetInput) {
 export async function cashOutBet(betId: string) {
   const user = await getAuthUser()
   if (!user) return { error: 'No autenticado' }
+  if (!isUUID(betId)) return { error: 'ID de apuesta invalido' }
 
   const admin = db()
   const { data: bet } = await admin.from('bets')
@@ -270,6 +273,7 @@ export async function placeParlay(input: ParlayInput) {
   if (input.amount < MIN_BET) return { error: `Apuesta minima: $${MIN_BET}` }
   if (input.amount > MAX_BET) return { error: `Apuesta maxima: $${MAX_BET}` }
   if (input.legs.some(l => !isValidPick(l.pick))) return { error: 'Pick invalido en alguna seleccion' }
+  if (input.legs.some(l => !isUUID(l.match_id))) return { error: 'ID de partido invalido en alguna seleccion' }
   if (!(await throttleOk(user.id))) return { error: 'Esperá un segundo entre apuestas' }
 
   const admin = db()

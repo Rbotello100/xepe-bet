@@ -12,6 +12,14 @@ export function isValidPick(p: unknown): p is BetPick {
   return typeof p === 'string' && (VALID_PICKS as readonly string[]).includes(p)
 }
 
+// UUID v4 (relajado: acepta cualquier UUID con formato 8-4-4-4-12 hex).
+// Pre-validar inputs antes de mandar a Supabase para dar errores claros
+// en lugar de "registro no encontrado" cuando el formato es invalido.
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+export function isUUID(s: unknown): s is string {
+  return typeof s === 'string' && UUID_RE.test(s)
+}
+
 // Parlay limits — defensa contra payouts astronomicos.
 // La RPC SQL valida los mismos topes (place_parlay_atomic) como segunda capa.
 export const MIN_PARLAY_LEGS = 2
