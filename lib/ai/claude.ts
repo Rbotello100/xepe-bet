@@ -1,4 +1,5 @@
 import Anthropic from '@anthropic-ai/sdk'
+import { isCircuitOpen, recordSuccess, recordFailure } from './circuit-breaker'
 
 let client: Anthropic | null = null
 
@@ -15,9 +16,21 @@ export interface ClaudeMessage {
   content: string
 }
 
+export class ClaudeUnavailableError extends Error {
+  constructor(reason: string) {
+    super(`Claude no disponible: ${reason}`)
+    this.name = 'ClaudeUnavailableError'
+  }
+}
+
 /**
  * Llama a Claude Haiku (el modelo mas barato) con un system prompt y mensajes.
  * Retorna el texto de la respuesta. Usar solo desde server-side.
+ *
+ * Wrapped en circuit breaker: si Anthropic falla 3 veces seguidas, abre el
+ * circuito por 5 min y rechaza inmediato. Evita timeouts en cascada cuando
+ * la API esta degradada — el cron de templates sigue funcionando sin
+ * depender de IA.
  */
 export async function askClaude({
   system,
@@ -28,15 +41,25 @@ export async function askClaude({
   messages: ClaudeMessage[]
   maxTokens?: number
 }): Promise<string> {
-  const c = getClient()
-  const res = await c.messages.create({
-    model: 'claude-haiku-4-5-20251001',
-    max_tokens: maxTokens,
-    system,
-    messages,
-  })
+  if (isCircuitOpen()) {
+    throw new ClaudeUnavailableError('circuit breaker abierto (fallos previos)')
+  }
 
-  // Concat todos los bloques de texto
+  let res: Anthropic.Messages.Message
+  try {
+    const c = getClient()
+    res = await c.messages.create({
+      model: 'claude-haiku-4-5-20251001',
+      max_tokens: maxTokens,
+      system,
+      messages,
+    })
+    recordSuccess()
+  } catch (err) {
+    recordFailure()
+    throw err
+  }
+
   const text = res.content
     .filter((b) => b.type === 'text')
     .map((b) => (b as { type: 'text'; text: string }).text)
