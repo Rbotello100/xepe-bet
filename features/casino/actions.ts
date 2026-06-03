@@ -57,6 +57,51 @@ async function canPlayToday(userId: string, gameType: string): Promise<boolean> 
 }
 
 /**
+ * Cierra cualquier sesion 'active' del user en la tabla dada (penalty_sessions
+ * o mines_sessions) marcandola como 'abandoned' y devuelve el bet al user.
+ *
+ * Por que: si el user double-clickea start, navega afuera y vuelve, o reinicia
+ * la pagina con sesion activa, antes la sesion previa quedaba 'busted' (perdida)
+ * y se le cobraban DOS bets en lugar de uno. Bug claro: si no decidio bustear
+ * ni cashear, no debe perder el stake.
+ *
+ * Idempotente: usa .eq('status', 'active') en el UPDATE, si la sesion ya estaba
+ * cerrada no hace nada. Refund usa addCredits con reference_id=session.id, asi
+ * que aun si dos requests concurrentes la cierran, addCredits solo paga una vez
+ * (idempotency check + UNIQUE index — fix P0 audit).
+ *
+ * Las sesiones was_free no descontaron nada del balance, asi que no requieren
+ * refund (skip addCredits).
+ */
+async function refundAbandonedSessions(
+  userId: string,
+  table: 'penalty_sessions' | 'mines_sessions',
+): Promise<void> {
+  const admin = db()
+  const { data: actives } = await admin
+    .from(table)
+    .select('id, bet_amount, was_free')
+    .eq('user_id', userId)
+    .eq('status', 'active')
+
+  for (const session of actives ?? []) {
+    const { data: closed } = await admin
+      .from(table)
+      .update({ status: 'abandoned', ended_at: new Date().toISOString() })
+      .eq('id', session.id)
+      .eq('status', 'active')
+      .select('id')
+      .maybeSingle()
+
+    if (!closed) continue
+    const stake = Number(session.bet_amount)
+    if (!session.was_free && stake > 0) {
+      await addCredits(userId, stake, 'refund', `Refund ${table === 'mines_sessions' ? 'mines' : 'penales'} abandonado`, session.id)
+    }
+  }
+}
+
+/**
  * Inserta un row en casino_sessions para tracking de PnL.
  * Llamado al cierre de cada partida (incluso si win=0).
  */
@@ -208,13 +253,12 @@ export async function startPenaltyGame(bet: number) {
     return { error: `Apuesta debe estar entre $${MIN_BET} y $${MAX_BET}` }
   }
 
-  // Cancelar cualquier sesión activa previa (defensa contra abandono)
   const admin = db()
-  await admin
-    .from('penalty_sessions')
-    .update({ status: 'busted', ended_at: new Date().toISOString() })
-    .eq('user_id', user.id)
-    .eq('status', 'active')
+
+  // Refund de sesion activa previa (abandono por double-click, navegacion, etc).
+  // Si el user no llego a bustear ni cashear, no es justo que pierda el stake.
+  // Sesiones was_free no descontaron nada → no requieren refund.
+  await refundAbandonedSessions(user.id, 'penalty_sessions')
 
   // Free play: NO descontamos del balance, pero registramos el bet real
   // (bet_amount > 0, was_free=true) para que el cashout pague proporcional
@@ -559,12 +603,9 @@ export async function startMines(mineCount: number) {
 
   const admin = db()
 
-  // Cancelar sesión activa previa
-  await admin
-    .from('mines_sessions')
-    .update({ status: 'busted', ended_at: new Date().toISOString() })
-    .eq('user_id', user.id)
-    .eq('status', 'active')
+  // Refund de sesion activa previa (abandono por double-click, navegacion, etc).
+  // Mismo patron que startPenaltyGame — ver refundAbandonedSessions.
+  await refundAbandonedSessions(user.id, 'mines_sessions')
 
   // Free play: NO descontamos del balance pero bet_amount=MINES_COST igual,
   // para que el cashout pague proporcional al multiplier. was_free=true marca
