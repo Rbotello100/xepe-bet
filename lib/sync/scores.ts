@@ -96,37 +96,37 @@ export async function syncFinishedScores(triggeredBy: UsageTrigger = 'cron') {
     })
   }
 
-  let synced = 0
-  let stillPlaying = 0
-  let notFound = 0
-  let autoResolved = 0
-  let nameMismatch = 0
+  // Paralelizar el procesamiento de matches. Cada match es independiente
+  // (distinto match_id), asi que sus UPDATEs + autoResolveMatch corren en
+  // paralelo. Para una jornada con 8 partidos finished simultaneos antes
+  // tardabamos ~8x el tiempo de uno solo (~1-2 min en partidos calientes).
+  // Ahora wall-clock = el mas lento, no la suma.
+  const counters = { synced: 0, stillPlaying: 0, notFound: 0, autoResolved: 0, nameMismatch: 0 }
 
-  for (const match of pending) {
+  await Promise.all(pending.map(async (match) => {
     if (!match.external_id) {
       await admin.from('matches').update({ score_sync_attempts: 999 }).eq('id', match.id)
-      continue
+      return
     }
 
     const event = scoresMap.get(match.external_id)
-
     if (!event) {
       await incrementSyncAttempts(match.id)
-      notFound++
-      continue
+      counters.notFound++
+      return
     }
 
     if (!event.completed || !event.scores) {
       await incrementSyncAttempts(match.id)
-      stillPlaying++
-      continue
+      counters.stillPlaying++
+      return
     }
 
     const parsed = parseScoresByTeamName(event)
     if (!parsed) {
       await incrementSyncAttempts(match.id)
-      nameMismatch++
-      continue
+      counters.nameMismatch++
+      return
     }
 
     const { data: existing } = await admin
@@ -148,14 +148,20 @@ export async function syncFinishedScores(triggeredBy: UsageTrigger = 'cron') {
       })
       .eq('id', match.id)
 
-    if (error) continue
-    synced++
+    if (error) return
+    counters.synced++
 
     if (wasNotFinished) {
       await autoResolveMatch(match.id, parsed.home, parsed.away)
-      autoResolved++
+      counters.autoResolved++
     }
-  }
+  }))
+
+  const synced = counters.synced
+  const stillPlaying = counters.stillPlaying
+  const notFound = counters.notFound
+  const autoResolved = counters.autoResolved
+  const nameMismatch = counters.nameMismatch
 
   return {
     pending: pending.length,
@@ -214,13 +220,20 @@ export async function autoResolveMatch(matchId: string, homeScore: number, awayS
   // Hoy is_correct arranca como NULL y se setea al resolver. El UPDATE con
   // .is('is_correct', null) garantiza que solo se transiciona una vez —
   // si re-corre, el rowcount=0 y no volvemos a sumar total_points.
+  //
+  // Paralelizado con Promise.all: para un partido con N predictions/bets,
+  // antes hacíamos N round-trips secuenciales (~10s para 100 bets).
+  // Ahora son N requests concurrentes (~200ms). Las RPCs atomic_credits
+  // son safe con concurrencia (row-level lock) + el UNIQUE constraint
+  // sigue siendo defensa en profundidad.
   const { data: predictions } = await admin
     .from('predictions')
     .select('id, user_id, predicted_winner, predicted_home_score, predicted_away_score')
     .eq('match_id', matchId)
     .is('is_correct', null)
     .returns<PendingPredictionRow[]>()
-  for (const pred of predictions ?? []) {
+
+  await Promise.all((predictions ?? []).map(async (pred) => {
     const isWinnerCorrect = pred.predicted_winner === winner
     const isExactScore = pred.predicted_home_score === homeScore && pred.predicted_away_score === awayScore
 
@@ -242,7 +255,7 @@ export async function autoResolveMatch(matchId: string, homeScore: number, awayS
         await admin.from('profiles').update({ total_points: (profile.total_points ?? 0) + points }).eq('id', pred.user_id)
       }
     }
-  }
+  }))
 
   const { data: bets } = await admin
     .from('bets')
@@ -250,12 +263,10 @@ export async function autoResolveMatch(matchId: string, homeScore: number, awayS
     .eq('match_id', matchId)
     .eq('status', 'pending')
     .returns<PendingBetRow[]>()
-  for (const bet of bets ?? []) {
+
+  await Promise.all((bets ?? []).map(async (bet) => {
     const betWon = pickMatchesWinner(bet.pick, winner)
 
-    // UPDATE con guard pending devuelve la row solo si transicionamos pending → won/lost.
-    // Si otro proceso (cron concurrente, admin retry) ya la resolvio, maybeSingle devuelve null
-    // y no llamamos addCredits — previene doble pago.
     const { data: updatedBet } = await admin
       .from('bets')
       .update({ status: betWon ? 'won' : 'lost', resolved_at: new Date().toISOString() })
@@ -267,7 +278,7 @@ export async function autoResolveMatch(matchId: string, homeScore: number, awayS
     if (updatedBet && betWon) {
       await addCredits(bet.user_id, bet.potential_payout, 'win', `Gano apuesta ${bet.pick} x${bet.odds_at_placement}`, bet.id)
     }
-  }
+  }))
 
   const { data: parlayLegs } = await admin
     .from('parlay_legs')
@@ -275,6 +286,12 @@ export async function autoResolveMatch(matchId: string, homeScore: number, awayS
     .eq('match_id', matchId)
     .eq('status', 'pending')
     .returns<PendingParlayLegRow[]>()
+  // Parlay legs NO se paralelizan: cada cierre de parlay implica leer todas
+  // las legs del mismo parlay para detectar allResolved. Si dos legs del
+  // mismo parlay corren concurrentes, ambas verían "allResolved" y intentarían
+  // cerrar el parlay. El UPDATE con guard pending solo deja pasar uno, pero
+  // simpler: procesarlos en serie. La cantidad de parlays con leg en un mismo
+  // match suele ser baja vs. bets individuales.
   for (const leg of parlayLegs ?? []) {
     const legWon = pickMatchesWinner(leg.pick, winner)
     await admin.from('parlay_legs').update({ status: legWon ? 'won' : 'lost' }).eq('id', leg.id).eq('status', 'pending')
