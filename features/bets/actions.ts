@@ -52,6 +52,19 @@ async function getAuthUser() {
 
 function db() { return createAdminClient() }
 
+// Rate limit: minimo 1s entre apuestas para prevenir doble-click y spam.
+// La RPC check_bet_throttle es atomica (SELECT FOR UPDATE + UPDATE en TX).
+const BET_THROTTLE_MS = 1000
+
+async function throttleOk(userId: string): Promise<boolean> {
+  const admin = db()
+  const { data } = await admin.rpc('check_bet_throttle', {
+    p_user_id: userId,
+    p_min_gap_ms: BET_THROTTLE_MS,
+  })
+  return data === true
+}
+
 function validateMatchOpen(match: { starts_at: string; status: string }): string | null {
   if (match.status === 'finished') return 'Partido ya finalizado'
   if (match.status === 'cancelled') return 'Partido cancelado'
@@ -88,6 +101,7 @@ export async function placeBet(input: BetInput) {
   if (input.amount < MIN_BET) return { error: `Apuesta minima: $${MIN_BET}` }
   if (input.amount > MAX_BET) return { error: `Apuesta maxima: $${MAX_BET}` }
   if (!isValidPick(input.pick)) return { error: 'Pick invalido' }
+  if (!(await throttleOk(user.id))) return { error: 'Esperá un segundo entre apuestas' }
 
   const admin = db()
 
@@ -198,6 +212,16 @@ export async function cashOutBet(betId: string) {
 
   const cashOutValue = Math.round(calculateCashOut(bet.odds_at_placement, currentOdds, bet.amount) * 100) / 100
   if (!Number.isFinite(cashOutValue) || cashOutValue <= 0) {
+    console.error('[cashOutBet] invalid calc', { betId, oddsAt: bet.odds_at_placement, current: currentOdds, amount: bet.amount, result: cashOutValue })
+    return { error: 'Cash out no disponible' }
+  }
+
+  // Upper bound defensa-en-profundidad: el cashout nunca puede exceder el payout
+  // teorico maximo (amount * odds_at_placement). Si calculateCashOut devuelve
+  // algo absurdo (bug, manipulacion de odds), aborta antes de pagar.
+  const maxPayout = Number(bet.amount) * Number(bet.odds_at_placement)
+  if (cashOutValue > maxPayout + 0.01) {
+    console.error('[cashOutBet] cashout > potential payout', { betId, cashOutValue, maxPayout })
     return { error: 'Cash out no disponible' }
   }
 
@@ -246,6 +270,7 @@ export async function placeParlay(input: ParlayInput) {
   if (input.amount < MIN_BET) return { error: `Apuesta minima: $${MIN_BET}` }
   if (input.amount > MAX_BET) return { error: `Apuesta maxima: $${MAX_BET}` }
   if (input.legs.some(l => !isValidPick(l.pick))) return { error: 'Pick invalido en alguna seleccion' }
+  if (!(await throttleOk(user.id))) return { error: 'Esperá un segundo entre apuestas' }
 
   const admin = db()
   const matchIds = input.legs.map(l => l.match_id)

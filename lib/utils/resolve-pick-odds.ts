@@ -30,10 +30,16 @@ export function resolveServerOdds(
 }
 
 /**
- * Tolerancia del 10% entre odds del cliente y odds del server. Cubre drift
- * legitimo entre que se renderizo la vista y se clickeo. Si excede, rechazar.
+ * Tolerancia entre odds del cliente y odds del server. Industry standard
+ * pre-match es 1-2% (Pinnacle estricto) y 3-5% in-play (FanDuel/DraftKings
+ * mas laxos). Usamos 3% como compromiso: cubre drift legitimo entre render
+ * y click sin permitir arbitrage de price-moves grandes.
+ *
+ * Antes era 10% — permitia "lockear" un precio caido sin perderse la
+ * apuesta. Bajado a 3% en el audit P1.
  */
-export function oddsWithinTolerance(clientOdds: number, serverOdds: number, tolerance = 0.10): boolean {
+export const ODDS_TOLERANCE = 0.03
+export function oddsWithinTolerance(clientOdds: number, serverOdds: number, tolerance = ODDS_TOLERANCE): boolean {
   if (!Number.isFinite(clientOdds) || clientOdds <= 0) return false
   if (!Number.isFinite(serverOdds) || serverOdds <= 0) return false
   return Math.abs(clientOdds - serverOdds) / serverOdds <= tolerance
