@@ -12,7 +12,9 @@ name: Sync scores cron
 
 on:
   schedule:
-    - cron: "0 */4 * * *"
+    # Cada 4 horas en :11 (non-peak) para escapar la cola de GitHub Actions
+    # que prioriza menos los workflows que caen en :00.
+    - cron: "11 */4 * * *"
   workflow_dispatch: {}
 
 jobs:

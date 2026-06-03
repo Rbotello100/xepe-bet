@@ -8,7 +8,10 @@ name: Relator templates cron
 
 on:
   schedule:
-    - cron: "*/15 * * * *"
+    # Cada 15 min en minutos non-round (3,18,33,48) para escapar la cola
+    # de prioridad de GitHub Actions. Patrones */15 caen en :00/:15/:30/:45
+    # — top peak global donde scheduled workflows se delayean o saltean.
+    - cron: "3,18,33,48 * * * *"
   workflow_dispatch: {}
 
 jobs:
