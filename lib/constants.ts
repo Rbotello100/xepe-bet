@@ -3,6 +3,15 @@ export const INITIAL_CREDITS = 1000
 export const MIN_BET = 10
 export const MAX_BET = 500
 
+// Whitelist de picks aceptados. La RPC SQL tiene CHECK constraint paralelo
+// (migration 20260603000001_pick_whitelist.sql). El TS valida pre-RPC para
+// mejor UX (mensaje claro en vez de error de Postgres).
+export const VALID_PICKS = ['home', 'draw', 'away', '1', 'X', '2'] as const
+export type BetPick = typeof VALID_PICKS[number]
+export function isValidPick(p: unknown): p is BetPick {
+  return typeof p === 'string' && (VALID_PICKS as readonly string[]).includes(p)
+}
+
 // Parlay limits — defensa contra payouts astronomicos.
 // La RPC SQL valida los mismos topes (place_parlay_atomic) como segunda capa.
 export const MIN_PARLAY_LEGS = 2

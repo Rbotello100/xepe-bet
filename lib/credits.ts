@@ -25,8 +25,15 @@ interface CreditResult {
 
 /**
  * Suma creditos al user. Falla si amount <= 0, > 50K, o si el nuevo balance
- * superaria el cap de $1M. Idempotente solo en sentido de "no race con otros
- * UPDATE concurrentes" — si la llamas 2 veces, suma 2 veces.
+ * superaria el cap de $1M.
+ *
+ * Idempotente cuando se pasa `referenceId`: antes de la RPC chequea si ya
+ * existe una credit_transaction con la misma (user_id, type, reference_id).
+ * Si existe, no-op y devuelve el balance actual. Esto previene doble pago
+ * cuando settlement se re-trigger (cron concurrente, admin retry).
+ *
+ * Como segunda capa, la migration 20260603000002 crea un UNIQUE partial
+ * index que ataja cualquier race entre el check y la RPC.
  */
 export async function addCredits(
   userId: string,
@@ -40,6 +47,24 @@ export async function addCredits(
   }
 
   const admin = createAdminClient()
+
+  // Idempotency check: si referenceId existe y ya hay una tx para esa
+  // (user, type, reference), no-op y devolvemos el balance actual.
+  if (referenceId) {
+    const { data: existing } = await admin
+      .from('credit_transactions')
+      .select('id')
+      .eq('user_id', userId)
+      .eq('type', type)
+      .eq('reference_id', referenceId)
+      .limit(1)
+      .maybeSingle()
+    if (existing) {
+      const balance = await getBalance(userId)
+      return { success: true, newBalance: balance }
+    }
+  }
+
   const { data, error } = await admin.rpc('add_credits_atomic', {
     p_user_id: userId,
     p_amount: amount,
@@ -49,6 +74,13 @@ export async function addCredits(
   })
 
   if (error || !data || data.length === 0) {
+    // El UNIQUE partial index (migration 20260603000002) puede levantar
+    // 23505 si dos requests escapan el check pre-RPC en una race. En ese
+    // caso interpretamos como "ya se aplico" y devolvemos success.
+    if (error?.code === '23505' && referenceId) {
+      const balance = await getBalance(userId)
+      return { success: true, newBalance: balance }
+    }
     return { success: false, newBalance: 0, error: error?.message ?? 'Error al acreditar' }
   }
 

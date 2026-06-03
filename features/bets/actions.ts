@@ -11,6 +11,7 @@ import {
   MAX_PARLAY_LEGS,
   MAX_PARLAY_ODDS,
   MAX_PARLAY_PAYOUT,
+  isValidPick,
 } from '@/lib/constants'
 import { calculateCashOut } from '@/lib/utils/cash-out'
 import { resolveServerOdds, oddsWithinTolerance } from '@/lib/utils/resolve-pick-odds'
@@ -86,6 +87,7 @@ export async function placeBet(input: BetInput) {
   if (!user) return { error: 'No autenticado' }
   if (input.amount < MIN_BET) return { error: `Apuesta minima: $${MIN_BET}` }
   if (input.amount > MAX_BET) return { error: `Apuesta maxima: $${MAX_BET}` }
+  if (!isValidPick(input.pick)) return { error: 'Pick invalido' }
 
   const admin = db()
 
@@ -243,6 +245,7 @@ export async function placeParlay(input: ParlayInput) {
   if (input.legs.length > MAX_PARLAY_LEGS) return { error: `Maximo ${MAX_PARLAY_LEGS} selecciones` }
   if (input.amount < MIN_BET) return { error: `Apuesta minima: $${MIN_BET}` }
   if (input.amount > MAX_BET) return { error: `Apuesta maxima: $${MAX_BET}` }
+  if (input.legs.some(l => !isValidPick(l.pick))) return { error: 'Pick invalido en alguna seleccion' }
 
   const admin = db()
   const matchIds = input.legs.map(l => l.match_id)

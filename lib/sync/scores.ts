@@ -200,12 +200,18 @@ export async function autoResolveMatch(matchId: string, homeScore: number, awayS
   for (const bet of bets ?? []) {
     const betWon = bet.pick === winner || bet.pick === (winner === 'home' ? '1' : winner === 'away' ? '2' : 'X')
 
-    await admin.from('bets').update({
-      status: betWon ? 'won' : 'lost',
-      resolved_at: new Date().toISOString(),
-    }).eq('id', bet.id).eq('status', 'pending')
+    // UPDATE con guard pending devuelve la row solo si transicionamos pending → won/lost.
+    // Si otro proceso (cron concurrente, admin retry) ya la resolvio, maybeSingle devuelve null
+    // y no llamamos addCredits — previene doble pago.
+    const { data: updatedBet } = await admin
+      .from('bets')
+      .update({ status: betWon ? 'won' : 'lost', resolved_at: new Date().toISOString() })
+      .eq('id', bet.id)
+      .eq('status', 'pending')
+      .select('id')
+      .maybeSingle()
 
-    if (betWon) {
+    if (updatedBet && betWon) {
       await addCredits(bet.user_id, bet.potential_payout, 'win', `Gano apuesta ${bet.pick} x${bet.odds_at_placement}`, bet.id)
     }
   }
@@ -219,13 +225,38 @@ export async function autoResolveMatch(matchId: string, homeScore: number, awayS
     const allResolved = allLegs?.every(l => l.status !== 'pending')
 
     if (allResolved) {
-      const allWon = allLegs?.every(l => l.status === 'won')
-      const { data: parlay } = await admin.from('parlays').select('*').eq('id', leg.parlay_id).eq('status', 'pending').single()
+      // Tres outcomes posibles del parlay:
+      //  - allWon (todas legs won) → status='won', paga potential_payout
+      //  - hasVoid (alguna leg void por match cancelado) → status='void', refund del stake
+      //  - default → status='lost', sin pago
+      const allWon = allLegs?.every(l => l.status === 'won') ?? false
+      const hasVoid = allLegs?.some(l => l.status === 'void') ?? false
+      const newStatus = hasVoid && !allLegs?.some(l => l.status === 'lost')
+        ? 'void'
+        : (allWon ? 'won' : 'lost')
+
+      const { data: parlay } = await admin
+        .from('parlays')
+        .select('*')
+        .eq('id', leg.parlay_id)
+        .eq('status', 'pending')
+        .maybeSingle()
 
       if (parlay) {
-        await admin.from('parlays').update({ status: allWon ? 'won' : 'lost' }).eq('id', parlay.id).eq('status', 'pending')
-        if (allWon) {
-          await addCredits(parlay.user_id, parlay.potential_payout, 'win', `Gano parlay x${parlay.total_odds}`, parlay.id)
+        const { data: updatedParlay } = await admin
+          .from('parlays')
+          .update({ status: newStatus })
+          .eq('id', parlay.id)
+          .eq('status', 'pending')
+          .select('id')
+          .maybeSingle()
+
+        if (updatedParlay) {
+          if (newStatus === 'won') {
+            await addCredits(parlay.user_id, parlay.potential_payout, 'win', `Gano parlay x${parlay.total_odds}`, parlay.id)
+          } else if (newStatus === 'void') {
+            await addCredits(parlay.user_id, parlay.amount, 'refund', `Parlay void: leg cancelada`, parlay.id)
+          }
         }
       }
     }

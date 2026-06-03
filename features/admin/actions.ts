@@ -79,17 +79,22 @@ export async function resolveMatch(matchId: string, homeScore: number, awayScore
     }
   }
 
-  // Resolve bets
+  // Resolve bets — UPDATE con guard pending + rowcount check para idempotencia.
+  // Si el partido se resolvio antes (cron concurrente o admin retry), el UPDATE
+  // devuelve 0 rows y no llamamos addCredits (addCredits tambien tiene chequeo
+  // de idempotency via reference_id como segunda capa).
   const { data: bets } = await admin.from('bets').select('*').eq('match_id', matchId).eq('status', 'pending')
   let betsWon = 0
   let betsLost = 0
   for (const bet of bets ?? []) {
     const betWon = bet.pick === winner || bet.pick === (winner === 'home' ? '1' : winner === 'away' ? '2' : 'X')
 
-    await admin.from('bets').update({
+    const { data: updatedBet } = await admin.from('bets').update({
       status: betWon ? 'won' : 'lost',
       resolved_at: new Date().toISOString(),
-    }).eq('id', bet.id)
+    }).eq('id', bet.id).eq('status', 'pending').select('id').maybeSingle()
+
+    if (!updatedBet) continue  // ya procesada por otra invocacion
 
     if (betWon) {
       betsWon++
@@ -99,7 +104,9 @@ export async function resolveMatch(matchId: string, homeScore: number, awayScore
     }
   }
 
-  // Resolve parlay legs for this match
+  // Resolve parlay legs — mismo patron. Si TODAS las legs estan resueltas, cerrar
+  // el parlay: 'won' si todas ganaron, 'void' si hay una void (refund stake),
+  // 'lost' en cualquier otro caso.
   const { data: parlayLegs } = await admin.from('parlay_legs').select('*').eq('match_id', matchId).eq('status', 'pending')
   let parlaysResolved = 0
   for (const leg of parlayLegs ?? []) {
@@ -107,25 +114,36 @@ export async function resolveMatch(matchId: string, homeScore: number, awayScore
 
     await admin.from('parlay_legs').update({
       status: legWon ? 'won' : 'lost',
-    }).eq('id', leg.id)
+    }).eq('id', leg.id).eq('status', 'pending')
 
-    // Check if ALL legs of this parlay are resolved
     const { data: allLegs } = await admin.from('parlay_legs').select('status').eq('parlay_id', leg.parlay_id)
     const allResolved = allLegs?.every(l => l.status !== 'pending')
 
     if (allResolved) {
-      const allWon = allLegs?.every(l => l.status === 'won')
-      const { data: parlay } = await admin.from('parlays').select('*').eq('id', leg.parlay_id).single()
+      const allWon = allLegs?.every(l => l.status === 'won') ?? false
+      const hasVoid = allLegs?.some(l => l.status === 'void') ?? false
+      const hasLost = allLegs?.some(l => l.status === 'lost') ?? false
+      // void solo si hay una leg void Y ninguna leg lost: el partido cancelado
+      // privo al user de la chance de ganar. Si ya habia una leg perdida, el
+      // parlay ya estaba muerto antes del void, sigue como lost.
+      const newStatus = hasVoid && !hasLost ? 'void' : (allWon ? 'won' : 'lost')
+
+      const { data: parlay } = await admin.from('parlays')
+        .select('*').eq('id', leg.parlay_id).eq('status', 'pending').maybeSingle()
 
       if (parlay) {
-        await admin.from('parlays').update({
-          status: allWon ? 'won' : 'lost',
-        }).eq('id', parlay.id)
+        const { data: updatedParlay } = await admin.from('parlays')
+          .update({ status: newStatus })
+          .eq('id', parlay.id).eq('status', 'pending').select('id').maybeSingle()
 
-        if (allWon) {
-          await addCredits(parlay.user_id, parlay.potential_payout, 'win', `Gano parlay ${allLegs?.length} legs x${parlay.total_odds}`, parlay.id)
+        if (updatedParlay) {
+          if (newStatus === 'won') {
+            await addCredits(parlay.user_id, parlay.potential_payout, 'win', `Gano parlay ${allLegs?.length} legs x${parlay.total_odds}`, parlay.id)
+          } else if (newStatus === 'void') {
+            await addCredits(parlay.user_id, parlay.amount, 'refund', `Parlay void: leg cancelada`, parlay.id)
+          }
+          parlaysResolved++
         }
-        parlaysResolved++
       }
     }
   }
