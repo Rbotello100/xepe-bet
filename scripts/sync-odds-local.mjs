@@ -15,7 +15,7 @@ const sb = createClient(env.NEXT_PUBLIC_SUPABASE_URL, env.SUPABASE_SERVICE_ROLE_
   auth: { autoRefreshToken: false, persistSession: false },
 })
 
-const ODDS_OPEN_HOURS = 504 // 21 dias — debe matchear lib/constants.ts
+const ODDS_OPEN_HOURS = 840 // 35 dias — debe matchear lib/constants.ts
 const MAX_ATTEMPTS = 10
 const SPORT_KEY = 'soccer_fifa_world_cup'
 

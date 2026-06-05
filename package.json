@@ -9,7 +9,9 @@
     "lint": "eslint",
     "typecheck": "tsc --noEmit",
     "smoke": "node scripts/smoke-test.mjs",
-    "stress": "node scripts/stress-test.mjs"
+    "smoke:real": "node scripts/smoke-real-match.mjs",
+    "stress": "node scripts/stress-test.mjs",
+    "sync-odds": "node scripts/sync-odds-local.mjs"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.89.0",

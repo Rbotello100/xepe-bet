@@ -72,12 +72,13 @@ export const TRIVIA_REWARDS = {
 } as const
 
 // --- Sync Schedule ---
-// Odds: sincronizamos hasta 21 dias antes del kickoff. The Odds API abre
-// las cuotas del Mundial ~3 semanas antes (verificado empirico 2026-06-04:
-// devuelve los 72 partidos hasta +23d). Ventana mas chica significaba que
-// la app mostraba "sin odds" para partidos que las casas ya tenian abiertos.
+// Odds: sincronizamos hasta 35 dias antes del kickoff. Suficiente para
+// cubrir fase de grupos completa + octavos del Mundial 2026. Para partidos
+// mas lejanos (cuartos/semis/final), las casas suelen no abrir hasta que
+// el bracket esta definido — el cron diario los captura cuando publiquen.
+// Verificacion empirica 2026-06-04: la API devuelve partidos hasta +23d.
 // Quedan congeladas hasta el cierre (BET_LOCK_HOURS = 1h antes).
-export const ODDS_OPEN_HOURS_BEFORE = 504 // 21 dias
+export const ODDS_OPEN_HOURS_BEFORE = 840 // 35 dias
 // Max 10 intentos (= 10 dias de crons diarios) para cubrir casos donde el match
 // entra en ventana pero la API aun no publico odds (a veces hasta 2 dias antes del kickoff).
 // Con 3 era muy bajo y los matches abandonaban antes de que la API los tuviera.
