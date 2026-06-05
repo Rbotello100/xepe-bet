@@ -1,0 +1,37 @@
+name: Log purge cron
+
+# Dispara /api/cron/purge-logs 1x/semana para borrar error_log > 30d y
+# activity_feed > 90d. Sin esto las tablas crecen sin limite y el panel
+# /admin/observability se ralentiza a partir de los 6 meses.
+#
+# Schedule: lunes 04:23 UTC (minuto non-round para escapar la cola peak
+# de scheduled workflows de GitHub Actions).
+
+on:
+  schedule:
+    - cron: "23 4 * * 1"
+  workflow_dispatch: {}
+
+jobs:
+  trigger-purge:
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    steps:
+      - name: Hit purge-logs endpoint
+        env:
+          CRON_SECRET: ${{ secrets.CRON_SECRET }}
+          SITE_URL: https://xepe-bet-botellorodrigo97-3285s-projects.vercel.app
+        run: |
+          set -e
+          echo "→ Disparando purge-logs en ${SITE_URL}"
+          STATUS=$(curl -sS -o /tmp/resp.json -w "%{http_code}" \
+            -X POST "${SITE_URL}/api/cron/purge-logs" \
+            -H "Authorization: Bearer ${CRON_SECRET}" \
+            --max-time 60 || echo "000")
+          echo "HTTP ${STATUS}"
+          cat /tmp/resp.json | head -c 400 || true
+          echo ""
+          if [ "${STATUS}" != "200" ]; then
+            echo "::warning::Cron devolvio HTTP ${STATUS}, revisar el endpoint"
+            exit 1
+          fi

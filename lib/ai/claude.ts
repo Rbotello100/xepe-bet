@@ -42,7 +42,7 @@ export async function askClaude({
   messages: ClaudeMessage[]
   maxTokens?: number
 }): Promise<string> {
-  if (isCircuitOpen()) {
+  if (await isCircuitOpen()) {
     throw new ClaudeUnavailableError('circuit breaker abierto (fallos previos)')
   }
 
@@ -55,9 +55,9 @@ export async function askClaude({
       system,
       messages,
     })
-    recordSuccess()
+    await recordSuccess()
   } catch (err) {
-    recordFailure()
+    await recordFailure()
     void logError('ai.askClaude', err, { maxTokens, systemPreview: system.slice(0, 80) })
     throw err
   }

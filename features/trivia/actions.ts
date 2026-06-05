@@ -94,9 +94,17 @@ export async function submitTrivia(answers: TriviaAnswerInput[]) {
     }))
   )
 
-  // Award credits if earned (with audit trail)
+  // Award credits if earned (with audit trail).
+  // Pasamos session.id como reference_id para idempotencia: si el pago falla
+  // y el admin debe reintentar manualmente, el UNIQUE constraint evita el
+  // doble pago.
   if (creditsEarned > 0) {
-    await addCredits(user.id, creditsEarned, 'trivia', `Trivia perfecta ${correctAnswers}/${totalQuestions}`)
+    const paid = await addCredits(user.id, creditsEarned, 'trivia', `Trivia perfecta ${correctAnswers}/${totalQuestions}`, session.id)
+    if (!paid.success) {
+      // addCredits ya logueo a error_log. Devolvemos el error al user para
+      // que sepa que algo pasó — el equipo va a regularizar manualmente.
+      return { error: 'Respondiste todo, pero no pudimos acreditar el premio. El equipo lo va a regularizar.' }
+    }
   }
 
   // Activity feed

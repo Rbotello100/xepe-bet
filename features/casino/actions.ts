@@ -4,6 +4,7 @@ import { createServerClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { revalidatePath } from 'next/cache'
 import { deductCredits, addCredits } from '@/lib/credits'
+import { logError } from '@/lib/log/error'
 import { MIN_BET, MAX_BET } from '@/lib/constants'
 import { generateRelatorMessage } from '@/lib/relator/generate-message'
 import { getCasinoRachaMalaUsuario } from '@/features/relator/stats'
@@ -102,13 +103,16 @@ async function canPlayToday(userId: string, gameType: string): Promise<boolean> 
 async function refundAbandonedSessions(
   userId: string,
   table: 'penalty_sessions' | 'mines_sessions',
-): Promise<void> {
+): Promise<{ refunded: number; failed: number }> {
   const admin = db()
   const { data: actives } = await admin
     .from(table)
     .select('id, bet_amount, was_free')
     .eq('user_id', userId)
     .eq('status', 'active')
+
+  let refunded = 0
+  let failed = 0
 
   for (const session of actives ?? []) {
     const { data: closed } = await admin
@@ -121,10 +125,32 @@ async function refundAbandonedSessions(
 
     if (!closed) continue
     const stake = Number(session.bet_amount)
-    if (!session.was_free && stake > 0) {
-      await addCredits(userId, stake, 'refund', `Refund ${table === 'mines_sessions' ? 'mines' : 'penales'} abandonado`, session.id)
+    if (session.was_free || stake <= 0) {
+      refunded++
+      continue
+    }
+    try {
+      const paid = await addCredits(userId, stake, 'refund', `Refund ${table === 'mines_sessions' ? 'mines' : 'penales'} abandonado`, session.id)
+      if (paid.success) {
+        refunded++
+      } else {
+        failed++
+        // addCredits ya logueo el error. Agregamos contexto para que el admin
+        // sepa que sesion quedo sin refundar. Continuamos con la siguiente
+        // (no bloqueamos el flujo del juego nuevo del user).
+        await logError('casino.refundAbandoned.creditFail', paid.error ?? 'unknown', {
+          sessionId: session.id, table, userId, stake,
+        }, 'error')
+      }
+    } catch (err) {
+      failed++
+      await logError('casino.refundAbandoned.threw', err, {
+        sessionId: session.id, table, userId, stake,
+      }, 'error')
     }
   }
+
+  return { refunded, failed }
 }
 
 /**
@@ -214,7 +240,17 @@ export async function playSlots() {
   const spinId = crypto.randomUUID()
 
   if (payout > 0) {
-    await addCredits(user.id, payout, 'casino_win', `Slots gano $${payout}`, spinId)
+    const paid = await addCredits(user.id, payout, 'casino_win', `Slots gano $${payout}`, spinId)
+    if (!paid.success) {
+      // addCredits ya loguea el error a error_log. Slots no tiene tabla de
+      // sesion para "rollback", asi que refundamos el cost del spin para que
+      // el user pueda reintentar sin perder la apuesta. Usamos un reference_id
+      // distinto al win original (suffix -refund) para no chocar con el UNIQUE.
+      if (cost > 0) {
+        await addCredits(user.id, cost, 'refund', 'Slots: refund por fallo en pago', spinId + '-refund')
+      }
+      return { error: 'No se pudo procesar el pago, reintentá en unos segundos' }
+    }
   }
 
   // Relator: slots con payout grande (s3 o mejor). Le adjunta el quiebre de
@@ -431,7 +467,13 @@ export async function cashoutPenalty(sessionId: string) {
   const multiplier = getPenaltyMultiplier(session.goals_scored)
   const payout = Math.round(Number(session.bet_amount) * multiplier)
 
-  await addCredits(user.id, payout, 'casino_win', `Penales retiro con ${session.goals_scored} gol(es), gano $${payout}`, sessionId)
+  const paid = await addCredits(user.id, payout, 'casino_win', `Penales retiro con ${session.goals_scored} gol(es), gano $${payout}`, sessionId)
+  if (!paid.success) {
+    // El UPDATE de status='cashed_out' ya hizo el guard. Rollback: volver a
+    // 'active' para que el user pueda reintentar el cashout sin perder los goles.
+    await admin.from('penalty_sessions').update({ status: 'active', ended_at: null }).eq('id', sessionId)
+    return { error: 'No se pudo procesar el pago, reintentá en unos segundos' }
+  }
 
   // Relator: cashout grande de penales (+ snippet de racha mala quebrada)
   if (payout >= RELATOR_PENALTY_MIN_PAYOUT && canFireRelatorHook(user.id)) {
@@ -595,7 +637,11 @@ export async function claimScratchPrize(sessionId: string) {
   const payout = Number(session.prize_amount ?? 0)
 
   if (payout > 0) {
-    await addCredits(user.id, payout, 'casino_win', `Rasca y gana $${payout}`, sessionId)
+    const paid = await addCredits(user.id, payout, 'casino_win', `Rasca y gana $${payout}`, sessionId)
+    if (!paid.success) {
+      await admin.from('scratch_sessions').update({ status: 'active', claimed_at: null }).eq('id', sessionId)
+      return { error: 'No se pudo procesar el pago, reintentá en unos segundos' }
+    }
   }
 
   // Tracking PnL
@@ -818,7 +864,11 @@ export async function cashoutMines(sessionId: string) {
   const payout = Math.round(Number(session.bet_amount) * multiplier)
 
   if (payout > 0) {
-    await addCredits(user.id, payout, 'casino_win', `Cancha Minada x${multiplier}, gano $${payout}`, sessionId)
+    const paid = await addCredits(user.id, payout, 'casino_win', `Cancha Minada x${multiplier}, gano $${payout}`, sessionId)
+    if (!paid.success) {
+      await admin.from('mines_sessions').update({ status: 'active', ended_at: null }).eq('id', sessionId)
+      return { error: 'No se pudo procesar el pago, reintentá en unos segundos' }
+    }
   }
 
   // Relator: cashout con multiplier alto en mines (+ snippet de racha mala quebrada)
@@ -1011,13 +1061,22 @@ export async function revealFelipe(sessionId: string) {
 
   // Pagar SOLO si gano algo y solo despues de cerrar la sesion
   if (payout > 0) {
-    await addCredits(
+    const paid = await addCredits(
       user.id,
       payout,
       'casino_win',
       `Felipe estaba en ${winningRoomData.name}, gano $${payout}`,
       sessionId,
     )
+    if (!paid.success) {
+      // Felipe ya esta revealed (resultado determinado server-side). No podemos
+      // hacer rollback a 'active' porque eso permitiria re-revelar con OTRO
+      // resultado random (cheating window). addCredits ya logueo el fallo en
+      // error_log con el sessionId — el admin lo va a ver en /observability y
+      // puede ejecutar add_credits_atomic manualmente con el mismo sessionId
+      // (idempotente: si funciona la 2da vez, no duplica el pago).
+      return { error: 'No se pudo procesar el pago. El equipo lo va a regularizar en breve.' }
+    }
   }
 
   // Activity feed (publico, todos lo ven)

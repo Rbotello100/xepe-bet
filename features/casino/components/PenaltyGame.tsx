@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useRef, useEffect } from 'react'
 import { startPenaltyGame, takePenaltyKick, cashoutPenalty } from '@/features/casino/actions'
 import { Button } from '@/components/ui/Button'
 import { Card } from '@/components/ui/Card'
@@ -65,7 +65,25 @@ export function PenaltyGame() {
   const [isFree, setIsFree]             = useState(false)
   const [loading, setLoading]           = useState(false)
 
+  // Tracking de timeouts para evitar leaks/loading colgado: si el componente
+  // unmounta o el user reinicia, cancelamos los setTimeout de la coreografia
+  // de animacion antes que disparen su setLoading(false) tardio.
+  const timeoutsRef = useRef<ReturnType<typeof setTimeout>[]>([])
+
+  const clearAnimationTimers = () => {
+    for (const t of timeoutsRef.current) clearTimeout(t)
+    timeoutsRef.current = []
+  }
+
+  // Safety net global: si el componente desmonta con timers pendientes los
+  // limpiamos. Asi el "Apostando..." nunca queda colgado en otra ruta.
+  useEffect(() => {
+    return () => clearAnimationTimers()
+  }, [])
+
   const reset = () => {
+    clearAnimationTimers()
+    setLoading(false)
     setPhase('idle'); setSessionId(null); setGoalsScored(0); setKickedZone(null); setCovered([])
     setIsGoal(null); setMultiplier(0); setNextProb(0.583); setPayout(0); setIsFree(false)
   }
@@ -109,13 +127,13 @@ export function PenaltyGame() {
     setIsGoal(res.isGoal ?? false)
     setIsFree(res.isFree ?? false)
 
-    // setLoading(false) corre dentro del nested setTimeout — lo dejamos
-    // ahi para no romper la coreografia de la animacion. Si la rama
-    // res.isGoal && newGoals>=MAX dispara handleAutoCashout, esa funcion
-    // ahora tiene try/finally tambien.
-    setTimeout(() => {
+    // Coreografia de animacion: 500ms hasta mostrar resultado, 1100ms hasta
+    // resolver fase. Los setTimeout van trackeados en timeoutsRef para que
+    // se cancelen si el componente unmounta — sin eso, setLoading(false)
+    // del inner timeout no corria nunca y el boton quedaba pegado.
+    const outerId = setTimeout(() => {
       setPhase('result')
-      setTimeout(() => {
+      const innerId = setTimeout(() => {
         if (res.isGoal) {
           const newGoals = res.goalsScored ?? goalsScored + 1
           setGoalsScored(newGoals)
@@ -132,7 +150,9 @@ export function PenaltyGame() {
         }
         setLoading(false)
       }, 1100)
+      timeoutsRef.current.push(innerId)
     }, 500)
+    timeoutsRef.current.push(outerId)
   }
 
   const handleAutoCashout = async () => {

@@ -4,6 +4,7 @@ import { useState, useTransition } from 'react'
 import { Card } from '@/components/ui/Card'
 import { Button } from '@/components/ui/Button'
 import { voidOrphanParlay, voidAllOrphanParlays, reconcileMatch, getHealthChecks, type HealthCheckResult } from '@/features/admin/actions'
+import { formatDate } from '@/lib/utils/format'
 
 interface HealthCheckPanelProps {
   initial: HealthCheckResult
@@ -104,7 +105,7 @@ export function HealthCheckPanel({ initial }: HealthCheckPanelProps) {
             {data.orphan_parlays.map(p => (
               <li key={p.id} className="flex items-center justify-between rounded bg-slate-800/50 px-2 py-1">
                 <span className="text-slate-300">
-                  ${p.amount} · user {p.user_id.slice(0, 8)} · {new Date(p.created_at).toLocaleDateString()}
+                  ${p.amount} · user {p.user_id.slice(0, 8)} · {formatDate(p.created_at)}
                 </span>
                 <Button size="sm" variant="outline" onClick={() => handleVoidOne(p.id)} disabled={isPending}>
                   Cerrar
@@ -192,7 +193,7 @@ export function HealthCheckPanel({ initial }: HealthCheckPanelProps) {
               const count = data.bets_pending_old.filter(b => b.match_id === matchId).length
               return (
                 <li key={matchId} className="rounded bg-slate-800/50 px-2 py-1">
-                  {sample.home_name} vs {sample.away_name} · {new Date(sample.starts_at).toLocaleDateString()} · {count} bets
+                  {sample.home_name} vs {sample.away_name} · {formatDate(sample.starts_at)} · {count} bets
                 </li>
               )
             })}

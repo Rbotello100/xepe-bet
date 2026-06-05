@@ -5,11 +5,11 @@ import { SCORE_SYNC_WINDOW_DAYS, type BetPick } from '@/lib/constants'
 import { getMatchesNeedingScoreSync } from './scheduler'
 import { logOddsApiUsage, type UsageTrigger } from '@/lib/odds-api/usage'
 import { logError } from '@/lib/log/error'
+import { pickMatchesWinner, type Winner } from '@/lib/utils/pick'
 import type { OddsScoreEvent } from '@/lib/odds-api/types'
 
 // Tipos explicitos para el settlement — previenen any-creep en autoResolveMatch.
 // Si el schema cambia, TypeScript lo cacha en compile-time.
-type Winner = 'home' | 'draw' | 'away'
 
 interface PendingBetRow {
   id: string
@@ -32,12 +32,6 @@ interface PendingParlayLegRow {
   id: string
   parlay_id: string
   pick: BetPick
-}
-
-function pickMatchesWinner(pick: BetPick, winner: Winner): boolean {
-  if (winner === 'home') return pick === 'home' || pick === '1'
-  if (winner === 'away') return pick === 'away' || pick === '2'
-  return pick === 'draw' || pick === 'X'
 }
 
 /**
@@ -262,9 +256,14 @@ export async function autoResolveMatch(matchId: string, homeScore: number, awayS
       .maybeSingle()
 
     if (updated && points > 0) {
-      const { data: profile } = await admin.from('profiles').select('total_points').eq('id', pred.user_id).single()
-      if (profile) {
-        await admin.from('profiles').update({ total_points: (profile.total_points ?? 0) + points }).eq('id', pred.user_id)
+      // Atomic increment via RPC. El SELECT-then-UPDATE de antes podia perder
+      // puntos si el mismo user tenia predictions en 2 matches resolviendo
+      // concurrentes (autoResolveMatch corre Promise.all a nivel match en
+      // syncFinishedScores). add_points hace UPDATE SET total_points =
+      // total_points + N en 1 sola query con row-lock implicito.
+      const { error: addErr } = await admin.rpc('add_points', { p_user_id: pred.user_id, p_amount: points })
+      if (addErr) {
+        void logError('sync.autoResolveMatch.addPoints', addErr, { userId: pred.user_id, points, matchId }, 'error')
       }
     }
   }))

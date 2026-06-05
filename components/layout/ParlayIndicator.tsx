@@ -1,31 +1,15 @@
 'use client'
 
 import Link from 'next/link'
-import { useEffect, useState } from 'react'
 import { formatOdds } from '@/lib/utils/format'
-import type { ParlayLeg } from '@/hooks/useParlay'
-
-const STORAGE_KEY = 'mundial-parlay'
+import { useParlay } from '@/hooks/useParlay'
 
 export function ParlayIndicator() {
-  const [legs, setLegs] = useState<ParlayLeg[]>([])
-
-  useEffect(() => {
-    const read = () => {
-      try { setLegs(JSON.parse(localStorage.getItem(STORAGE_KEY) ?? '[]')) } catch { /* */ }
-    }
-    read()
-    window.addEventListener('storage', read)
-    window.addEventListener('parlay-updated', read)
-    return () => {
-      window.removeEventListener('storage', read)
-      window.removeEventListener('parlay-updated', read)
-    }
-  }, [])
+  // Toda la lectura/escritura de localStorage vive en useParlay (scoped por
+  // userId). Este componente solo refleja lo que el hook expone.
+  const { legs, totalOdds } = useParlay()
 
   if (legs.length === 0) return null
-
-  const totalOdds = legs.reduce((acc, leg) => acc * leg.odds, 1)
 
   return (
     <Link href="/parlay">

@@ -7,7 +7,9 @@ import { syncMatchOdds } from '@/lib/sync/odds'
 import { syncFinishedScores, autoResolveMatch, voidBetsForCancelledMatch } from '@/lib/sync/scores'
 import { discoverAllSports, type DiscoverResult } from '@/lib/sync/discover'
 import { addCredits } from '@/lib/credits'
-import { ACTIVE_SPORT_KEYS } from '@/lib/constants'
+import { logError } from '@/lib/log/error'
+import { pickMatchesWinner } from '@/lib/utils/pick'
+import { ACTIVE_SPORT_KEYS, type BetPick } from '@/lib/constants'
 
 /**
  * Devuelve null si el request es de un admin válido; devuelve `{ error }` si falla.
@@ -88,7 +90,7 @@ export async function resolveMatch(matchId: string, homeScore: number, awayScore
   let betsWon = 0
   let betsLost = 0
   for (const bet of bets ?? []) {
-    const betWon = bet.pick === winner || bet.pick === (winner === 'home' ? '1' : winner === 'away' ? '2' : 'X')
+    const betWon = pickMatchesWinner(bet.pick as BetPick, winner)
 
     const { data: updatedBet } = await admin.from('bets').update({
       status: betWon ? 'won' : 'lost',
@@ -99,7 +101,12 @@ export async function resolveMatch(matchId: string, homeScore: number, awayScore
 
     if (betWon) {
       betsWon++
-      await addCredits(bet.user_id, bet.potential_payout, 'win', `Gano apuesta ${bet.pick} x${bet.odds_at_placement}`, bet.id)
+      const paid = await addCredits(bet.user_id, bet.potential_payout, 'win', `Gano apuesta ${bet.pick} x${bet.odds_at_placement}`, bet.id)
+      if (!paid.success) {
+        // La bet ya quedo marcada won. addCredits logueo el error. Logueamos
+        // duplicado con contexto admin para que sea trivial encontrarlo en obs.
+        await logError('admin.resolveMatch.payBet', paid.error ?? 'pago_fallido', { betId: bet.id, userId: bet.user_id, amount: bet.potential_payout, matchId }, 'critical')
+      }
     } else {
       betsLost++
     }
@@ -111,7 +118,7 @@ export async function resolveMatch(matchId: string, homeScore: number, awayScore
   const { data: parlayLegs } = await admin.from('parlay_legs').select('*').eq('match_id', matchId).eq('status', 'pending')
   let parlaysResolved = 0
   for (const leg of parlayLegs ?? []) {
-    const legWon = leg.pick === winner || leg.pick === (winner === 'home' ? '1' : winner === 'away' ? '2' : 'X')
+    const legWon = pickMatchesWinner(leg.pick as BetPick, winner)
 
     await admin.from('parlay_legs').update({
       status: legWon ? 'won' : 'lost',
@@ -139,9 +146,15 @@ export async function resolveMatch(matchId: string, homeScore: number, awayScore
 
         if (updatedParlay) {
           if (newStatus === 'won') {
-            await addCredits(parlay.user_id, parlay.potential_payout, 'win', `Gano parlay ${allLegs?.length} legs x${parlay.total_odds}`, parlay.id)
+            const paid = await addCredits(parlay.user_id, parlay.potential_payout, 'win', `Gano parlay ${allLegs?.length} legs x${parlay.total_odds}`, parlay.id)
+            if (!paid.success) {
+              await logError('admin.resolveMatch.payParlay', paid.error ?? 'pago_fallido', { parlayId: parlay.id, userId: parlay.user_id, amount: parlay.potential_payout, matchId }, 'critical')
+            }
           } else if (newStatus === 'void') {
-            await addCredits(parlay.user_id, parlay.amount, 'refund', `Parlay void: leg cancelada`, parlay.id)
+            const refunded = await addCredits(parlay.user_id, parlay.amount, 'refund', `Parlay void: leg cancelada`, parlay.id)
+            if (!refunded.success) {
+              await logError('admin.resolveMatch.refundParlay', refunded.error ?? 'refund_fallido', { parlayId: parlay.id, userId: parlay.user_id, amount: parlay.amount, matchId }, 'critical')
+            }
           }
           parlaysResolved++
         }
@@ -424,7 +437,13 @@ export async function voidOrphanParlay(parlayId: string) {
 
   if (error) return { error: error.message }
 
-  await addCredits(parlay.user_id, parlay.amount, 'refund', `Refund parlay huérfano`, parlayId)
+  const refunded = await addCredits(parlay.user_id, parlay.amount, 'refund', `Refund parlay huérfano`, parlayId)
+  if (!refunded.success) {
+    // El parlay quedo void. addCredits ya logueo. Devolvemos error al admin
+    // para que sepa que el refund no se aplico y deba retry manualmente.
+    await logError('admin.refundOrphanParlay', refunded.error ?? 'refund_fallido', { parlayId, userId: parlay.user_id, amount: parlay.amount }, 'critical')
+    return { error: 'Parlay marcado void, pero el refund fallo. Reintentá desde observabilidad.' }
+  }
 
   revalidatePath('/admin')
   return { success: true, refunded: parlay.amount, user_id: parlay.user_id }

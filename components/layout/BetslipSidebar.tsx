@@ -1,46 +1,23 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useState } from 'react'
 import { Card } from '@/components/ui/Card'
 import { Button } from '@/components/ui/Button'
 import { formatOdds, formatCredits } from '@/lib/utils/format'
 import { MIN_BET, MAX_BET } from '@/lib/constants'
 import { placeParlay } from '@/features/bets/actions'
 import { toast } from 'sonner'
-import type { ParlayLeg } from '@/hooks/useParlay'
-
-const STORAGE_KEY = 'mundial-parlay'
+import { useParlay } from '@/hooks/useParlay'
 
 export function BetslipSidebar() {
-  const [legs, setLegs] = useState<ParlayLeg[]>([])
+  // Toda la lectura/escritura de localStorage vive en useParlay (scoped por
+  // userId + listener `parlay-updated` para sincronizar instancias). Antes
+  // este componente hacia localStorage.setItem directo y rompia el sync con
+  // los MatchCards y el ParlayIndicator.
+  const { legs, removeLeg, clearAll, totalOdds } = useParlay()
   const [amount, setAmount] = useState('')
   const [submitting, setSubmitting] = useState(false)
 
-  useEffect(() => {
-    const read = () => {
-      try { setLegs(JSON.parse(localStorage.getItem(STORAGE_KEY) ?? '[]')) } catch { /* */ }
-    }
-    read()
-    window.addEventListener('storage', read)
-    window.addEventListener('parlay-updated', read)
-    return () => {
-      window.removeEventListener('storage', read)
-      window.removeEventListener('parlay-updated', read)
-    }
-  }, [])
-
-  const removeLeg = (matchId: string) => {
-    const next = legs.filter(l => l.matchId !== matchId)
-    setLegs(next)
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(next))
-  }
-
-  const clearAll = () => {
-    setLegs([])
-    localStorage.setItem(STORAGE_KEY, '[]')
-  }
-
-  const totalOdds = legs.reduce((acc, leg) => acc * leg.odds, 1)
   const numAmount = parseFloat(amount) || 0
   const potentialPayout = numAmount * totalOdds
 
