@@ -43,8 +43,6 @@ function SlotCell({
   landed: boolean
   isWin: boolean
 }) {
-  const hasImage = true
-
   return (
     <div
       className={clsx(
@@ -60,27 +58,14 @@ function SlotCell({
       ) : (
         <div
           className={clsx(
-            'w-full h-full bg-gradient-to-br flex flex-col items-center justify-center gap-0.5',
+            'w-full h-full bg-gradient-to-br flex flex-col items-center justify-center gap-1 px-1',
             SYMBOL_COLORS[symbol],
             landed && 'animate-[slot-land_0.25s_ease-out_forwards]',
           )}
         >
-          {hasImage ? (
-            <img
-              src={`/casino/slots/${symbol}.png`}
-              alt={SYMBOL_LABELS[symbol]}
-              className="w-full h-full object-cover"
-            />
-          ) : (
-            <>
-              <span className="text-[10px] font-bold text-white/70 uppercase tracking-wider">
-                {SYMBOL_LABELS[symbol]}
-              </span>
-              <div className="w-8 h-8 rounded-full bg-white/20 flex items-center justify-center text-xs text-white font-bold">
-                {symbol.toUpperCase()}
-              </div>
-            </>
-          )}
+          <span className="text-[11px] font-bold text-white uppercase tracking-wider text-center leading-tight">
+            {SYMBOL_LABELS[symbol]}
+          </span>
         </div>
       )}
     </div>
