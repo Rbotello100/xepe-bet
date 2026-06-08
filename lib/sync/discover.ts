@@ -1,6 +1,7 @@
 import { fetchEvents } from '@/lib/odds-api/client'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { logOddsApiUsage, type UsageTrigger } from '@/lib/odds-api/usage'
+import { getRoundForMatch, getGroupForMatch } from './wc-2026-groups'
 
 /**
  * Descubre events nuevos en The Odds API y los reconcilia con la tabla matches.
@@ -108,8 +109,8 @@ export async function discoverMatches(
           status: 'scheduled',
           external_id: event.id,
           sport_key: sportKey,
-          round: guessRoundFromSport(sportKey),
-          group_name: guessGroupFromSport(sportKey),
+          round: getRoundForMatch(sportKey, event.commence_time),
+          group_name: getGroupForMatch(event.home_team, event.away_team),
         })
         if (error) errors.push(`insert ${event.id}: ${error.message}`)
         else inserted++
@@ -212,10 +213,6 @@ function sanitizeFifaCode(name: string): string {
   return name.replace(/[^A-Za-z]/g, '').substring(0, 3).toUpperCase() || 'XXX'
 }
 
-function guessRoundFromSport(sportKey: string): string {
-  return sportKey === 'soccer_fifa_world_cup' ? 'group' : 'league'
-}
-
-function guessGroupFromSport(sportKey: string): string {
-  return sportKey === 'soccer_fifa_world_cup' ? 'X' : 'T'
-}
+// Las funciones de round/group ahora viven en lib/sync/wc-2026-groups.ts —
+// vienen como import en el header. Eso permite reusarlas en scripts de
+// cleanup y mantenerlas sincronizadas con el mapeo oficial de equipos.
