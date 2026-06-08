@@ -20,10 +20,38 @@ function notifyParlayUpdate() {
   queueMicrotask(() => window.dispatchEvent(new CustomEvent('parlay-updated')))
 }
 
+const VALID_PICKS = new Set(['home', 'draw', 'away', '1', 'X', '2'])
+
+// Acepta solo legs con shape valido. Antes de este filtro, un leg con `pick`
+// corrupto (legacy, version vieja del codigo) hacia que placeParlay tirara
+// "Pick invalido en alguna seleccion" sin chance de fixearlo desde el UI.
+// Si detectamos un leg invalido lo descartamos silenciosamente y rescribimos
+// el storage sin el — el user ve la talonera limpia y puede armar de nuevo.
+function isValidLeg(l: unknown): l is ParlayLeg {
+  if (!l || typeof l !== 'object') return false
+  const x = l as Record<string, unknown>
+  return typeof x.matchId === 'string'
+    && typeof x.matchLabel === 'string'
+    && typeof x.pick === 'string'
+    && VALID_PICKS.has(x.pick)
+    && typeof x.pickLabel === 'string'
+    && typeof x.odds === 'number'
+    && Number.isFinite(x.odds)
+    && x.odds > 1
+}
+
 function readStorage(key: string): ParlayLeg[] {
   if (typeof window === 'undefined') return []
   try {
-    return JSON.parse(localStorage.getItem(key) ?? '[]')
+    const raw = JSON.parse(localStorage.getItem(key) ?? '[]')
+    if (!Array.isArray(raw)) return []
+    const valid = raw.filter(isValidLeg)
+    // Si encontramos legs corruptos, reescribimos el storage limpio para que
+    // futuras lecturas no paguen el costo del filter ni vuelvan a fallar.
+    if (valid.length !== raw.length) {
+      try { localStorage.setItem(key, JSON.stringify(valid)) } catch { /* ignore */ }
+    }
+    return valid
   } catch {
     return []
   }
