@@ -10,6 +10,11 @@ import { LeaderboardTable } from '@/features/leaderboard/components/LeaderboardT
 import { Podium } from '@/features/leaderboard/components/Podium'
 import { CasinoStatsSection } from '@/features/leaderboard/components/CasinoStatsSection'
 
+// Revalidate cada 30s. Sin esto, Next.js cachea el HTML hasta que algo lo
+// invalida — y los movimientos del ranking (apuestas ganadas, casino wins)
+// no disparan revalidatePath automatico de esta ruta.
+export const revalidate = 30
+
 export default async function LeaderboardPage() {
   const auth = await getOptionalAuth()
 

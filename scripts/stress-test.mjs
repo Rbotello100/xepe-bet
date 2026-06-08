@@ -353,14 +353,23 @@ async function cleanup(userIds, matchIds) {
   await sb.from('activity_feed').delete().in('user_id', userIds)
   await sb.from('bet_throttle').delete().in('user_id', userIds)
 
+  // Borrar profiles explicito ANTES del auth.users delete. Si auth.users
+  // tira (error de red, ratelimit), por lo menos profile no queda huerfano
+  // ensuciando el leaderboard publico.
+  await sb.from('profiles').delete().in('id', userIds)
+
+  let authDeleted = 0, authFailed = 0
   for (const uid of userIds) {
-    await sb.auth.admin.deleteUser(uid).catch(() => {})
+    const { error } = await sb.auth.admin.deleteUser(uid)
+    if (error) authFailed++; else authDeleted++
   }
+  if (authFailed > 0) console.log(`[cleanup] WARN: ${authFailed}/${userIds.length} auth.deleteUser fallaron (profile ya borrado)`)
+
   // Borrar matches test
   for (const mid of matchIds) {
     await sb.from('matches').delete().eq('id', mid)
   }
-  console.log(`[cleanup] Done.`)
+  console.log(`[cleanup] Done. (${authDeleted} auth users + profiles borrados)`)
 }
 
 // --- MAIN
