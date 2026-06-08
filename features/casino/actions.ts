@@ -975,6 +975,14 @@ export async function placeFelipeBets(bets: FelipeBetInput[]) {
     .eq('user_id', user.id)
     .eq('status', 'active')
 
+  // Pre-generamos el sessionId server-side. Lo usamos en el insert para que
+  // si el Server Action se reintenta por timeout, el segundo intento choque
+  // con PK duplicada (idempotencia del insert). Tambien lo usamos como base
+  // del reference_id del rollback addCredits para que sea idempotente: si el
+  // rollback corre 2 veces, el UNIQUE partial index en credit_transactions
+  // (user_id, type, reference_id) bloquea el segundo refund.
+  const sessionId = crypto.randomUUID()
+
   // Descontar el total ANTES de crear la sesion (atomic)
   const deduct = await deductCredits(
     user.id,
@@ -987,6 +995,7 @@ export async function placeFelipeBets(bets: FelipeBetInput[]) {
   const { data: session, error } = await admin
     .from('felipe_sessions')
     .insert({
+      id: sessionId,
       user_id: user.id,
       bets: validatedBets,
       total_bet: totalBet,
@@ -996,8 +1005,10 @@ export async function placeFelipeBets(bets: FelipeBetInput[]) {
     .single()
 
   if (error || !session) {
-    // Rollback del deduct
-    await addCredits(user.id, totalBet, 'refund', 'Rollback Felipe sesion fallida')
+    // Rollback del deduct con reference_id estable. Si la action se reintenta
+    // por timeout y termina llamando este rollback de nuevo, el UNIQUE index
+    // garantiza que solo 1 refund se acredita.
+    await addCredits(user.id, totalBet, 'refund', 'Rollback Felipe sesion fallida', sessionId + '-rollback')
     return { error: 'Error al crear ronda' }
   }
 
