@@ -1,4 +1,5 @@
 import Link from 'next/link'
+import Image from 'next/image'
 
 interface HeaderProps {
   user?: { display_name: string; avatar_url: string | null; credits: number; total_points: number } | null
@@ -18,14 +19,16 @@ export function Header({ user, active = '/' }: HeaderProps) {
   return (
     <header className="sticky top-0 z-40 border-b border-card-border bg-[color-mix(in_oklab,var(--color-background)_80%,transparent)] backdrop-blur-[14px]">
       <div className="mx-auto flex h-16 max-w-[1500px] items-center gap-8 px-6">
-        {/* LOGO XEPEBET (branding nuevo) */}
-        <Link href="/" className="flex items-center gap-2.5 text-xl font-extrabold tracking-tight">
-          <span className="grid h-8 w-8 place-items-center rounded-[9px] bg-[linear-gradient(135deg,var(--color-accent),var(--color-accent-deep))] text-base text-background shadow-[0_4px_16px_color-mix(in_oklab,var(--color-accent)_45%,transparent)]">
-            ✦
-          </span>
-          <span className="text-strong">
-            XEPE<span className="text-accent-deep">BET</span>
-          </span>
+        {/* LOGO XEPEBET — imagen real en public/xepebet-logo.png */}
+        <Link href="/" className="flex items-center" aria-label="Xepe Bet">
+          <Image
+            src="/xepebet-logo.png"
+            alt="Xepe Bet"
+            width={144}
+            height={36}
+            priority
+            className="h-9 w-auto"
+          />
         </Link>
 
         {/* NAV */}
