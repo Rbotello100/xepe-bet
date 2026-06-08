@@ -6,10 +6,14 @@ import { SlotsGame } from './SlotsGame'
 import { PenaltyGame } from './PenaltyGame'
 import { ScratchGame } from './ScratchGame'
 import { MinesGame } from './MinesGame'
-import { FelipeGame } from './FelipeGame'
+// Felipe: oculto del UI por decision de producto. El componente, las actions
+// (placeFelipeBets/revealFelipe) y la tabla felipe_sessions quedan en el repo
+// por si se reactiva. Para volver a habilitarlo: descomentar import + tab
+// entry + render condicional, y cambiar default activeTab a 'felipe'.
+// import { FelipeGame } from './FelipeGame'
 
 const TABS = [
-  { key: 'felipe', label: '¿Donde esta Felipe?', icon: '🕵️' },
+  // { key: 'felipe', label: '¿Donde esta Felipe?', icon: '🕵️' },
   { key: 'slots', label: 'Slots', icon: '🎰' },
   { key: 'mines', label: 'Cancha Minada', icon: '⚠️' },
   { key: 'penalty', label: 'Penales', icon: '⚽' },
@@ -22,7 +26,7 @@ interface CasinoTabsProps {
 }
 
 export function CasinoTabs({ credits, userId }: CasinoTabsProps) {
-  const [activeTab, setActiveTab] = useState<string>('felipe')
+  const [activeTab, setActiveTab] = useState<string>('slots')
 
   return (
     <div className="space-y-4">
@@ -44,7 +48,7 @@ export function CasinoTabs({ credits, userId }: CasinoTabsProps) {
         ))}
       </div>
 
-      {activeTab === 'felipe' && <FelipeGame credits={credits} />}
+      {/* {activeTab === 'felipe' && <FelipeGame credits={credits} />} */}
       {activeTab === 'slots' && <SlotsGame credits={credits} />}
       {activeTab === 'mines' && <MinesGame />}
       {activeTab === 'penalty' && <PenaltyGame />}

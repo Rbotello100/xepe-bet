@@ -151,7 +151,6 @@ const META: string[] = [
   'Slots tiene 6 símbolos. El más raro paga 8.000.',
   'Mines: cuanto más celdas reveles, más alta la cuota. Y el riesgo.',
   'Rasca y gana: 25% de chance de premio. Vale los 15 créditos.',
-  'Felipe se esconde en alguna sala. Saber dónde es la mitad del juego.',
   'Ranking se cierra al final del torneo. Hay tiempo de subir.',
   'Aciertos exactos en predicciones suman 3x. Conviene afinar el ojo.',
   'Solo se computa una apuesta por partido por usuario. No dupliquen.',
