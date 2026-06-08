@@ -175,13 +175,23 @@ async function recordCasinoSession(
 }
 
 // ==========================================================
-// SLOTS 3×3 — 3 paylines (RTP ~88%)
-// Costo fijo por giro ($10). Los payouts son fijos tambien — a mejor simbolo
-// mayor premio pero menor probabilidad (definida por WEIGHTS).
+// SLOTS 3×3 — 3 paylines, multi-win (RTP ~89.95% teorico)
+// Costo fijo por giro ($10). Cada fila se evalua independiente y los
+// premios de TODAS las filas ganadoras se suman. Antes solo pagaba la
+// mejor linea; al cambiar a multi-line hubo que reajustar WEIGHTS para
+// mantener un RTP saludable (target 89.5%, alcanzado teorico 89.95%).
 // ==========================================================
 const SLOTS_COST = 10
 const SYMBOLS = ['s1', 's2', 's3', 's4', 's5', 's6']
-const WEIGHTS = [4, 8, 14, 24, 30, 20]
+// Weights elegidos para RTP=89.95% multi-line:
+//   - Copa(s1)=4%   8000   contribuye 0.512  por fila
+//   - Balon(s2)=8%  1500   contribuye 0.768
+//   - Botin(s3)=13% 300    contribuye 0.659
+//   - Arco(s4)=19%  70     contribuye 0.480
+//   - Silbato(s5)=25% 18   contribuye 0.281
+//   - Banderin(s6)=31% 10  contribuye 0.298
+//   E[fila] = 2.998 ; E[giro] = 3 filas * 2.998 = 8.995 ; RTP = 89.95%
+const WEIGHTS = [4, 8, 13, 19, 25, 31]
 
 const PAYOUTS: Record<string, number> = {
   s1: 8000, s2: 1500, s3: 300, s4: 70, s5: 18, s6: 10,
@@ -200,22 +210,30 @@ function spinCell(): string {
     cumulative += WEIGHTS[i]
     if (rand < cumulative) return SYMBOLS[i]
   }
-  return 's5'
+  return SYMBOLS[SYMBOLS.length - 1]
 }
 
-function checkWinLines(grid: string[]): { winLine: number[]; symbol: string; payout: number } | null {
-  let best: { winLine: number[]; symbol: string; payout: number } | null = null
+interface MultiWin {
+  winLines: number[][]    // todas las filas ganadoras (puede ser 0, 1, 2 o 3)
+  winSymbols: string[]    // simbolo de cada fila ganadora (orden = winLines)
+  payout: number          // suma de los payouts de todas las filas
+}
+
+function checkWinLines(grid: string[]): MultiWin | null {
+  const winLines: number[][] = []
+  const winSymbols: string[] = []
+  let payout = 0
   for (const line of WIN_LINES) {
     const [a, b, c] = line
     if (grid[a] === grid[b] && grid[b] === grid[c]) {
       const sym = grid[a]
-      const payout = PAYOUTS[sym] ?? 0
-      if (!best || payout > best.payout) {
-        best = { winLine: line, symbol: sym, payout }
-      }
+      winLines.push(line)
+      winSymbols.push(sym)
+      payout += PAYOUTS[sym] ?? 0
     }
   }
-  return best
+  if (winLines.length === 0) return null
+  return { winLines, winSymbols, payout }
 }
 
 export async function playSlots() {
@@ -268,23 +286,32 @@ export async function playSlots() {
     })()
   }
 
-  // Tracking PnL — siempre insertamos, gane o pierda
+  // Tracking PnL — siempre insertamos, gane o pierda. Persistimos todas las
+  // lineas ganadoras para que el panel /admin/observability pueda auditar
+  // multi-win sin perder informacion.
   await recordCasinoSession(user.id, 'slots', cost, payout, {
-    grid, winLine: win?.winLine ?? null, symbol: win?.symbol ?? null, free,
+    grid, winLines: win?.winLines ?? null, winSymbols: win?.winSymbols ?? null, free,
   })
 
   const admin = db()
   await admin.from('activity_feed').insert({
     user_id: user.id, action_type: 'achievement',
     description: `jugo slots${payout > 0 ? ` y gano $${payout}` : ''}`,
-    metadata: { game: 'slots', grid, winLine: win?.winLine ?? null, symbol: win?.symbol ?? null, payout, free },
+    metadata: { game: 'slots', grid, winLines: win?.winLines ?? null, winSymbols: win?.winSymbols ?? null, payout, free },
   })
 
   revalidatePath('/', 'layout')
+  // Compat: el SlotsGame.tsx actual lee `winLine` (single) y `symbol`. Para
+  // no romper el front interim mientras Claude Design entrega el rediseno,
+  // exponemos AMBAS formas: la nueva multi-line (winLines, winSymbols) y la
+  // vieja single-line (winLine = primera, symbol = primero). Cuando se
+  // implemente el nuevo SlotsGame, eliminar los campos legacy.
   return {
     grid,
-    winLine: win?.winLine ?? null,
-    symbol: win?.symbol ?? null,
+    winLines: win?.winLines ?? null,
+    winSymbols: win?.winSymbols ?? null,
+    winLine: win?.winLines?.[0] ?? null,
+    symbol: win?.winSymbols?.[0] ?? null,
     payout,
     free,
   }
