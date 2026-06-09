@@ -72,10 +72,15 @@ const SYMBOL_SVG: Record<SymbolId, string> = {
 const ICONS_HTML = SYMBOL_SVG
 
 function tileHTML(symId: SymbolId, trow?: number): string {
-  const s = SYMBOLS_DATA[symId]
+  // Defensive: si el server devuelve un ID no conocido (ej s1..s6 viejos),
+  // fallback a banderin para que la animacion no crashee con
+  // "Cannot read properties of undefined (reading 'tile')". El issue real se
+  // resuelve actualizando el server, pero esto evita pantalla blanca.
+  const s = SYMBOLS_DATA[symId] ?? SYMBOLS_DATA.banderin
+  const safeId = SYMBOLS_DATA[symId] ? symId : 'banderin'
   const attr = trow != null ? ` data-trow="${trow}"` : ''
-  return `<div class="slots-tile" data-sym="${symId}" style="--tcol:${s.tile};--tglow:${s.glow}"${attr}>
-    <div class="slots-tile__icon" style="color:${s.ink}; filter: drop-shadow(0 2px 3px rgba(0,0,0,.28))">${ICONS_HTML[symId]}</div>
+  return `<div class="slots-tile" data-sym="${safeId}" style="--tcol:${s.tile};--tglow:${s.glow}"${attr}>
+    <div class="slots-tile__icon" style="color:${s.ink}; filter: drop-shadow(0 2px 3px rgba(0,0,0,.28))">${ICONS_HTML[safeId]}</div>
   </div>`
 }
 

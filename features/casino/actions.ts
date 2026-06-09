@@ -182,19 +182,22 @@ async function recordCasinoSession(
 // mantener un RTP saludable (target 89.5%, alcanzado teorico 89.95%).
 // ==========================================================
 const SLOTS_COST = 10
-const SYMBOLS = ['s1', 's2', 's3', 's4', 's5', 's6']
+// IDs nuevos del rediseno (handoff design v2). Reemplazan a s1..s6.
+// El front lee estos IDs directamente para mapear a colores/iconos. Mantener
+// SYMBOLS y PAYOUTS en el mismo orden para que WEIGHTS aplique igual.
+const SYMBOLS = ['copa', 'balon', 'botin', 'arco', 'silbato', 'banderin']
 // Weights elegidos para RTP=89.95% multi-line:
-//   - Copa(s1)=4%   8000   contribuye 0.512  por fila
-//   - Balon(s2)=8%  1500   contribuye 0.768
-//   - Botin(s3)=13% 300    contribuye 0.659
-//   - Arco(s4)=19%  70     contribuye 0.480
-//   - Silbato(s5)=25% 18   contribuye 0.281
-//   - Banderin(s6)=31% 10  contribuye 0.298
+//   - copa     =4%   8000   contribuye 0.512  por fila
+//   - balon    =8%   1500   contribuye 0.768
+//   - botin    =13%  300    contribuye 0.659
+//   - arco     =19%  70     contribuye 0.480
+//   - silbato  =25%  18     contribuye 0.281
+//   - banderin =31%  10     contribuye 0.298
 //   E[fila] = 2.998 ; E[giro] = 3 filas * 2.998 = 8.995 ; RTP = 89.95%
 const WEIGHTS = [4, 8, 13, 19, 25, 31]
 
 const PAYOUTS: Record<string, number> = {
-  s1: 8000, s2: 1500, s3: 300, s4: 70, s5: 18, s6: 10,
+  copa: 8000, balon: 1500, botin: 300, arco: 70, silbato: 18, banderin: 10,
 }
 
 const WIN_LINES = [
