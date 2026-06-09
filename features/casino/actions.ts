@@ -320,7 +320,12 @@ export async function playSlots() {
 // El cliente NUNCA controla el estado; todo viene de penalty_sessions.
 // ==========================================================
 const TOTAL_ZONES = 12
-const GK_COVERAGE = [5, 6, 7, 8, 9, 10]
+// Cobertura del arquero por gol acumulado. Index 0 = primer penal.
+// Bajamos del 5 al 4 para que el primer penal sea ~66.67% (era ~58.33%).
+// Engagement: la mayoria de los users no logra el primero y abandona;
+// hacerlo mas probable mejora la retencion sin romper el RTP global
+// porque el sweet spot del jugador optimo sigue siendo el 2do gol.
+const GK_COVERAGE = [4, 6, 7, 8, 9, 10]
 const PENALTY_MULTIPLIERS = [1.5, 3.5, 8, 20, 55, 200]
 
 function getPenaltyMultiplier(goalsScored: number): number {
