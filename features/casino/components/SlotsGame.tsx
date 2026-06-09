@@ -389,31 +389,50 @@ export function SlotsGame({ credits }: { credits: number }) {
       strip.style.transform = `translateY(${-(30 - 3) * PITCH}px)`
     })
 
-    // En paralelo, llamamos al server.
+    const hardStop = () => {
+      setSpinning(false)
+      reels.forEach(r => {
+        r.classList.remove('blur')
+        const s = r.firstElementChild as HTMLElement | null
+        if (s) {
+          s.style.transition = 'none'
+          s.style.transform = 'translateY(0)'
+        }
+      })
+      if (machineRef.current) machineRef.current.classList.remove('is-spinning')
+    }
+
+    // En paralelo, llamamos al server CON timeout duro de 8s. Si la action
+    // no responde, asumimos fallo y reseteamos el UI completo (no dejamos
+    // los rodillos girando infinito).
+    console.log('[SlotsGame] llamando playSlots()...')
     let res: Awaited<ReturnType<typeof playSlots>>
     try {
-      res = await playSlots()
+      res = await Promise.race([
+        playSlots(),
+        new Promise<never>((_, rej) => setTimeout(() => rej(new Error('TIMEOUT_8S')), 8000)),
+      ]) as Awaited<ReturnType<typeof playSlots>>
+      console.log('[SlotsGame] playSlots resolvio:', res)
     } catch (err) {
-      setSpinning(false)
-      reels.forEach(r => r.classList.remove('blur'))
-      if (machineRef.current) machineRef.current.classList.remove('is-spinning')
-      setResult({ message: 'Error de red. Reintentá.', subtitle: '', isWin: false })
-      console.error('[SlotsGame] playSlots threw', err)
+      hardStop()
+      const msg = (err as Error).message === 'TIMEOUT_8S'
+        ? 'El servidor no respondio. Reintentá.'
+        : 'Error de red. Reintentá.'
+      setResult({ message: msg, subtitle: '', isWin: false })
+      console.error('[SlotsGame] playSlots fallo:', err)
       return
     }
 
     if ('error' in res && res.error) {
-      setSpinning(false)
-      reels.forEach(r => r.classList.remove('blur'))
-      if (machineRef.current) machineRef.current.classList.remove('is-spinning')
+      hardStop()
       setResult({ message: res.error, subtitle: '', isWin: false })
+      console.warn('[SlotsGame] server devolvio error:', res.error)
       return
     }
     if (!('grid' in res) || !res.grid) {
-      setSpinning(false)
-      reels.forEach(r => r.classList.remove('blur'))
-      if (machineRef.current) machineRef.current.classList.remove('is-spinning')
+      hardStop()
       setResult({ message: 'Respuesta invalida del servidor', subtitle: '', isWin: false })
+      console.error('[SlotsGame] sin grid en respuesta:', res)
       return
     }
 
