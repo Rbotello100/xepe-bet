@@ -321,12 +321,27 @@ export async function playSlots() {
 // ==========================================================
 const TOTAL_ZONES = 12
 // Cobertura del arquero por gol acumulado. Index 0 = primer penal.
-// Bajamos del 5 al 4 para que el primer penal sea ~66.67% (era ~58.33%).
-// Engagement: la mayoria de los users no logra el primero y abandona;
-// hacerlo mas probable mejora la retencion sin romper el RTP global
-// porque el sweet spot del jugador optimo sigue siendo el 2do gol.
-const GK_COVERAGE = [4, 6, 7, 8, 9, 10]
-const PENALTY_MULTIPLIERS = [1.5, 3.5, 8, 20, 55, 200]
+// Shift de 1 zona en TODOS para subir el engagement (probabilidades +8pp
+// en cada gol).
+//   - 1°: 9/12 = 75.00% (era 58.33% → 66.67%)
+//   - 2°: 7/12 = 58.33%
+//   - 3°: 6/12 = 50.00%
+//   - 4°: 5/12 = 41.67%
+//   - 5°: 4/12 = 33.33%
+//   - 6°: 3/12 = 25.00%
+const GK_COVERAGE = [3, 5, 6, 7, 8, 9]
+// Multipliers ajustados para balancear el shift. Si dejamos los viejos
+// [1.5, 3.5, 8, 20, 55, 200], las estrategias 2-6 quedan con RTP 150-180%
+// (perdida directa para la casa). Con estos numeros el RTP por estrategia
+// queda 97-109%, generoso pero acotado.
+//   RTP = P_acum(N) * multiplier(N)
+//   - cashea al 1°: 0.75 * 1.3 = 97.5%
+//   - cashea al 2°: 0.4375 * 2.5 = 109.4%
+//   - cashea al 3°: 0.2188 * 5 = 109.4%
+//   - cashea al 4°: 0.0911 * 12 = 109.3%
+//   - cashea al 5°: 0.0304 * 35 = 106.4%
+//   - cashea al 6°: 0.0076 * 130 = 98.7%
+const PENALTY_MULTIPLIERS = [1.3, 2.5, 5, 12, 35, 130]
 
 function getPenaltyMultiplier(goalsScored: number): number {
   return PENALTY_MULTIPLIERS[Math.min(goalsScored - 1, PENALTY_MULTIPLIERS.length - 1)]
