@@ -8,6 +8,7 @@ interface HeaderProps {
 
 const NAV = [
   { label: 'Partidos', href: '/' },
+  { label: 'Fixture', href: '/fixture' },
   { label: 'Ranking', href: '/leaderboard' },
   { label: 'Predicciones', href: '/predictions' },
   { label: 'Apuestas', href: '/bets' },
