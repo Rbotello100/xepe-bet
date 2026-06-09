@@ -1,7 +1,6 @@
 'use client'
 
 import { useEffect, useRef, useState } from 'react'
-import { renderToStaticMarkup } from 'react-dom/server'
 import { playSlots } from '@/features/casino/actions'
 import { SlotIcon, type SymbolId } from './SlotIcon'
 
@@ -58,13 +57,19 @@ const EASE = 'cubic-bezier(.16,1.28,.4,1)'
 const BASE_DUR = 1.05                // duracion col 0 (segundos)
 const STAGGER = 0.22                 // +0.22s por columna
 
-// Pre-renderizamos los SVG de cada simbolo a markup estatico una sola vez.
-// Insertarlos via innerHTML en cada tile evita el costo de hidratar 25*3=75
-// SlotIcon React components por giro.
-const ICONS_HTML: Record<SymbolId, string> = IDS.reduce((acc, id) => {
-  acc[id] = renderToStaticMarkup(<SlotIcon id={id} className="w-full h-full" />)
-  return acc
-}, {} as Record<SymbolId, string>)
+// SVG paths inline para usar via innerHTML (no podemos usar renderToStaticMarkup
+// porque importar react-dom/server en un client component rompe en el browser).
+// Esto duplica los paths de SlotIcon.tsx pero es la unica forma de construir
+// 75 tiles por giro sin pagar el costo de hidratar 75 React components.
+const SYMBOL_SVG: Record<SymbolId, string> = {
+  copa: '<svg viewBox="0 0 64 64" width="100%" height="100%" fill="currentColor" fill-rule="evenodd"><path d="M20 12H44V20C44 30 38.5 36 32 36C25.5 36 20 30 20 20Z M20 15C12 15 10 18.5 10 22C10 25.8 13.5 29 20 29V25.6C15.6 25.6 13.4 23.8 13.4 22C13.4 20 15.6 18.4 20 18.4Z M44 15C52 15 54 18.5 54 22C54 25.8 50.5 29 44 29V25.6C48.4 25.6 50.6 23.8 50.6 22C50.6 20 48.4 18.4 44 18.4Z M29 36H35V46H29Z M23 46H41L43.5 51H20.5Z M18 50.5H46V55H18Z"/></svg>',
+  balon: '<svg viewBox="0 0 64 64" width="100%" height="100%"><circle cx="32" cy="32" r="20" fill="#F4F8FF"/><path d="M32 23.7 39.9 29.4 36.9 38.7 27.1 38.7 24.1 29.4Z" fill="#0B1020"/><path d="M32 23.7V12M39.9 29.4 51 25.8M36.9 38.7 43.8 48.2M27.1 38.7 20.2 48.2M24.1 29.4 13 25.8" stroke="#0B1020" stroke-width="2.6" stroke-linecap="round" fill="none"/><circle cx="32" cy="32" r="20" fill="none" stroke="#0B1020" stroke-width="1.8"/></svg>',
+  botin: '<svg viewBox="0 0 64 64" width="100%" height="100%" fill="currentColor" fill-rule="evenodd"><path d="M11 36C11 29 15 24.5 23 24L25.3 12.7L30.7 13.5L29.7 23.7C31.4 25 33.2 25.5 35.8 25.8C43.8 26.6 48.8 29.5 49.8 34.7C50.2 36.9 48.5 38.5 46 38.5H14C12.5 38.5 11 37.5 11 36Z M16.1 41.5a2.6 2.6 0 1 0 5.2 0a2.6 2.6 0 1 0 -5.2 0Z M25.4 42a2.6 2.6 0 1 0 5.2 0a2.6 2.6 0 1 0 -5.2 0Z M34.7 42a2.6 2.6 0 1 0 5.2 0a2.6 2.6 0 1 0 -5.2 0Z M44.1 41.5a2.6 2.6 0 1 0 5.2 0a2.6 2.6 0 1 0 -5.2 0Z"/></svg>',
+  arco: '<svg viewBox="0 0 64 64" width="100%" height="100%" fill="currentColor" fill-rule="evenodd"><path d="M11 51V17H53V51H49.5V20.5H14.5V51Z M24 21H26.5V49H24Z M37.5 21H40V49H37.5Z M15 33H49V35.5H15Z M27 41a5 5 0 1 0 10 0a5 5 0 1 0 -10 0Z"/></svg>',
+  silbato: '<svg viewBox="0 0 64 64" width="100%" height="100%" fill="currentColor" fill-rule="evenodd"><path d="M11 27.5H26.74A13 13 0 1 1 26.74 40.5H11A3 3 0 0 1 8 37.5V30.5A3 3 0 0 1 11 27.5Z M40 30a4 4 0 1 0 0 8a4 4 0 1 0 0 -8Z M19 7a5 5 0 1 0 0 10a5 5 0 1 0 0 -10Z M19 12.5a2.4 2.4 0 1 0 0 4.8a2.4 2.4 0 1 0 0 -4.8Z"/></svg>',
+  banderin: '<svg viewBox="0 0 64 64" width="100%" height="100%" fill="currentColor" fill-rule="evenodd"><path d="M28 9H31V53H28Z M31 11L52 18L31 25Z M22 53H42V56H22Z"/></svg>',
+}
+const ICONS_HTML = SYMBOL_SVG
 
 function tileHTML(symId: SymbolId, trow?: number): string {
   const s = SYMBOLS_DATA[symId]
@@ -365,13 +370,32 @@ export function SlotsGame({ credits }: { credits: number }) {
     setSpinning(true)
     machineRef.current.classList.add('is-spinning')
 
-    // Llamamos al server PRIMERO. La animacion arranca solo si la action
-    // resolvio OK; asi no quedan rodillos girando con un error de fondo.
+    // ARRANCAMOS LA ANIMACION INMEDIATAMENTE — el server resuelve en paralelo.
+    // Empezamos con tiles aleatorios y un translate gigante que dura mucho.
+    // Cuando llegue el resultado, paramos cada rodillo con su target real.
+    const reels = Array.from(reelsRef.current.children) as HTMLElement[]
+    reels.forEach(reel => {
+      const strip = reel.firstElementChild as HTMLElement
+      if (!strip) return
+      let html = ''
+      for (let i = 0; i < 30; i++) html += tileHTML(rndSym())
+      strip.innerHTML = html
+      strip.style.transition = 'none'
+      strip.style.transform = 'translateY(0)'
+      reel.classList.add('blur')
+      void strip.offsetHeight
+      // Pre-spin largo (10s) que SE VA A INTERRUMPIR cuando llegue el resultado.
+      strip.style.transition = `transform 10s linear`
+      strip.style.transform = `translateY(${-(30 - 3) * PITCH}px)`
+    })
+
+    // En paralelo, llamamos al server.
     let res: Awaited<ReturnType<typeof playSlots>>
     try {
       res = await playSlots()
     } catch (err) {
       setSpinning(false)
+      reels.forEach(r => r.classList.remove('blur'))
       if (machineRef.current) machineRef.current.classList.remove('is-spinning')
       setResult({ message: 'Error de red. Reintentá.', subtitle: '', isWin: false })
       console.error('[SlotsGame] playSlots threw', err)
@@ -380,12 +404,14 @@ export function SlotsGame({ credits }: { credits: number }) {
 
     if ('error' in res && res.error) {
       setSpinning(false)
+      reels.forEach(r => r.classList.remove('blur'))
       if (machineRef.current) machineRef.current.classList.remove('is-spinning')
       setResult({ message: res.error, subtitle: '', isWin: false })
       return
     }
     if (!('grid' in res) || !res.grid) {
       setSpinning(false)
+      reels.forEach(r => r.classList.remove('blur'))
       if (machineRef.current) machineRef.current.classList.remove('is-spinning')
       setResult({ message: 'Respuesta invalida del servidor', subtitle: '', isWin: false })
       return
@@ -398,9 +424,7 @@ export function SlotsGame({ credits }: { credits: number }) {
     const payout = res.payout ?? 0
     const free = res.free ?? false
 
-    // Arrancamos los 3 rodillos en paralelo. Cada uno con duracion
-    // base + c*stagger para frenar de izq a der.
-    const reels = Array.from(reelsRef.current.children) as HTMLElement[]
+    // Frenamos cada rodillo en su target con stagger (col 0 → 1 → 2).
     let maxDur = 0
     reels.forEach((reel, c) => {
       const strip = reel.firstElementChild as HTMLElement
@@ -409,7 +433,7 @@ export function SlotsGame({ credits }: { credits: number }) {
       let html = ''
       for (let i = 0; i < 3; i++) html += tileHTML(rndSym())
       for (let i = 0; i < FILLER; i++) html += tileHTML(rndSym())
-      for (let r = 0; r < 3; r++) html += tileHTML(target[c][r], r) // tiles target con data-trow
+      for (let r = 0; r < 3; r++) html += tileHTML(target[c][r], r) // target tiles con data-trow
       for (let i = 0; i < TRAIL; i++) html += tileHTML(rndSym())
       strip.innerHTML = html
       const targetIndex = 3 + FILLER
