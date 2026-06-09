@@ -12,9 +12,19 @@ import { getLeaderboard } from '@/features/leaderboard/queries'
 import { getBestBetOfTheDay } from '@/features/bets/queries'
 import { createServerClient } from '@/lib/supabase/server'
 
-export default async function HomePage() {
+interface HomePageProps {
+  searchParams: Promise<{ date?: string }>
+}
+
+export default async function HomePage({ searchParams }: HomePageProps) {
   const auth = await getOptionalAuth()
   const supabase = await createServerClient()
+  const sp = await searchParams
+  // Valida la opcion contra el whitelist — evita que un valor invalido (ej
+  // ?date=foo) reviente el filtro o pase como prop libre. Default: 'hoy'.
+  const dateRaw = sp.date
+  const dateFilter: 'hoy' | 'manana' | 'semana' | 'todos' =
+    dateRaw === 'manana' || dateRaw === 'semana' || dateRaw === 'todos' ? dateRaw : 'hoy'
 
   const [feedPosts, leaderboard, bestBet, matchCount, liveCount] = await Promise.all([
     // 50 mensajes alcanza para ~3min de rotacion a 4s c/u; bajado de 150 por
@@ -82,8 +92,8 @@ export default async function HomePage() {
           </h2>
         </div>
 
-        <Suspense fallback={<MatchListSkeleton />}>
-          <MatchList />
+        <Suspense fallback={<MatchListSkeleton />} key={dateFilter}>
+          <MatchList filter={dateFilter} />
         </Suspense>
       </AppShell>
     </>
