@@ -5,7 +5,7 @@ import { Card } from '@/components/ui/Card'
 import { Button } from '@/components/ui/Button'
 import { formatOdds, formatCredits } from '@/lib/utils/format'
 import { MIN_BET, MAX_BET } from '@/lib/constants'
-import { placeParlay } from '@/features/bets/actions'
+import { placeBet, placeParlay } from '@/features/bets/actions'
 import { toast } from 'sonner'
 import { useParlay } from '@/hooks/useParlay'
 
@@ -21,20 +21,46 @@ export function BetslipSidebar() {
   const numAmount = parseFloat(amount) || 0
   const potentialPayout = numAmount * totalOdds
 
+  // El boton se adapta: con 1 leg apuesta simple via placeBet, con 2+ usa
+  // placeParlay. Asi el user no necesita ir a /match/[id] para apostar a un
+  // solo partido — todo el flujo es desde la talonera.
+  const isSingle = legs.length === 1
+  const minRequired = isSingle ? 1 : 2
+
   const handleSubmit = async () => {
-    if (legs.length < 2 || numAmount < MIN_BET) return
+    if (legs.length < minRequired || numAmount < MIN_BET) return
     setSubmitting(true)
-    const result = await placeParlay({
-      legs: legs.map(l => ({ match_id: l.matchId, market_type: '1x2', pick: l.pick, odds: l.odds })),
-      amount: numAmount,
-    })
-    if (result.error) {
-      toast.error(result.error)
+
+    if (isSingle) {
+      const l = legs[0]
+      const result = await placeBet({
+        match_id: l.matchId,
+        market_type: '1x2',
+        pick: l.pick,
+        odds: l.odds,
+        amount: numAmount,
+      })
+      if (result.error) {
+        toast.error(result.error)
+      } else {
+        toast.success(`Apuesta creada! Potencial: ${formatCredits(result.potential_payout!)}`)
+        clearAll()
+        setAmount('')
+      }
     } else {
-      toast.success(`Parlay creado! Potencial: ${formatCredits(result.potential_payout!)}`)
-      clearAll()
-      setAmount('')
+      const result = await placeParlay({
+        legs: legs.map(l => ({ match_id: l.matchId, market_type: '1x2', pick: l.pick, odds: l.odds })),
+        amount: numAmount,
+      })
+      if (result.error) {
+        toast.error(result.error)
+      } else {
+        toast.success(`Parlay creado! Potencial: ${formatCredits(result.potential_payout!)}`)
+        clearAll()
+        setAmount('')
+      }
     }
+
     setSubmitting(false)
   }
 
@@ -44,7 +70,9 @@ export function BetslipSidebar() {
         <Card className="text-center py-8 space-y-2">
           <p className="text-2xl">🎯</p>
           <p className="text-sm font-medium text-white">Talonera</p>
-          <p className="text-xs text-slate-500">Selecciona odds de los partidos para armar tu parlay</p>
+          <p className="text-xs text-slate-500">
+            Seleccioná una cuota para apostar. Sumá más partidos para armar un parlay.
+          </p>
         </Card>
       </div>
     )
@@ -72,7 +100,7 @@ export function BetslipSidebar() {
 
         <div className="border-t border-slate-700 pt-3 space-y-2">
           <div className="flex justify-between text-sm">
-            <span className="text-slate-400">Odds total</span>
+            <span className="text-slate-400">{isSingle ? 'Cuota' : 'Odds total'}</span>
             <span className="text-[var(--casino-yellow)] font-bold">x{formatOdds(totalOdds)}</span>
           </div>
 
@@ -95,12 +123,19 @@ export function BetslipSidebar() {
 
           <Button
             onClick={handleSubmit}
-            disabled={legs.length < 2 || numAmount < MIN_BET || submitting}
+            disabled={legs.length < minRequired || numAmount < MIN_BET || submitting}
             className="w-full"
             size="sm"
           >
-            {submitting ? 'Apostando...' : `Apostar Parlay`}
+            {submitting
+              ? 'Apostando...'
+              : isSingle ? 'Apostar' : 'Apostar Parlay'}
           </Button>
+          {isSingle && (
+            <p className="text-[10px] text-slate-500 text-center">
+              Sumá otra selección para convertir en parlay
+            </p>
+          )}
         </div>
       </Card>
     </div>
