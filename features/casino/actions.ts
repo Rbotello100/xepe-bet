@@ -588,12 +588,20 @@ export async function playScratchCard() {
   let cells: string[]
   let prizeSymbol: string | null = null
 
-  if (roll < 75) {
+  // Distribucion ajustada 2026-06-08 — subimos la frecuencia de wins para
+  // mejorar engagement. Los premios quedan iguales, pero se gana mas seguido.
+  //   - 70% sin premio (era 75%)
+  //   - 23% pequeño: 70% chance 🟨 $15, 30% chance 🥅 $50 — promedio $25.5
+  //   - 5%  medio:   ⭐ $100
+  //   - 2%  jackpot: 70% chance 🏆 $150, 30% chance ⚽ $300 — promedio $195
+  // Esperanza/giro = 0.23 * $25.5 + 0.05 * $100 + 0.02 * $195 = $14.77
+  // Costo = $15 → RTP = 98.4% (era 73.67%).
+  if (roll < 70) {
     cells = generateLosingCard(SCRATCH_SYMBOLS)
-  } else if (roll < 95) {
+  } else if (roll < 93) {
     prizeSymbol = Math.random() < 0.7 ? '🟨' : '🥅'
     cells = generateWinningCard(prizeSymbol, SCRATCH_SYMBOLS)
-  } else if (roll < 99) {
+  } else if (roll < 98) {
     prizeSymbol = '⭐'
     cells = generateWinningCard(prizeSymbol, SCRATCH_SYMBOLS)
   } else {
