@@ -301,17 +301,12 @@ export async function playSlots() {
   })
 
   revalidatePath('/', 'layout')
-  // Compat: el SlotsGame.tsx actual lee `winLine` (single) y `symbol`. Para
-  // no romper el front interim mientras Claude Design entrega el rediseno,
-  // exponemos AMBAS formas: la nueva multi-line (winLines, winSymbols) y la
-  // vieja single-line (winLine = primera, symbol = primero). Cuando se
-  // implemente el nuevo SlotsGame, eliminar los campos legacy.
+  // Return multi-line definitivo. Los campos legacy (winLine, symbol) ya no
+  // se necesitan — el nuevo SlotsGame.tsx consume winLines + winSymbols.
   return {
     grid,
     winLines: win?.winLines ?? null,
     winSymbols: win?.winSymbols ?? null,
-    winLine: win?.winLines?.[0] ?? null,
-    symbol: win?.winSymbols?.[0] ?? null,
     payout,
     free,
   }
