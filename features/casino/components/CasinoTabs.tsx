@@ -4,20 +4,24 @@ import { useState } from 'react'
 import { clsx } from 'clsx'
 import { SlotsGame } from './SlotsGame'
 import { PenaltyGame } from './PenaltyGame'
-import { ScratchGame } from './ScratchGame'
 import { MinesGame } from './MinesGame'
 // Felipe: oculto del UI por decision de producto. El componente, las actions
 // (placeFelipeBets/revealFelipe) y la tabla felipe_sessions quedan en el repo
 // por si se reactiva. Para volver a habilitarlo: descomentar import + tab
 // entry + render condicional, y cambiar default activeTab a 'felipe'.
 // import { FelipeGame } from './FelipeGame'
+// Rasca y Gana: oculto del UI temporalmente — UX y reveals con bugs que no
+// alcanzamos a fixear pre-Mundial. ScratchGame component + playScratchCard
+// action + claimScratchPrize action + scratch_cards table quedan en el repo.
+// Reactivar: descomentar import + tab entry + render condicional.
+// import { ScratchGame } from './ScratchGame'
 
 const TABS = [
   // { key: 'felipe', label: '¿Donde esta Felipe?', icon: '🕵️' },
   { key: 'slots', label: 'Slots', icon: '🎰' },
   { key: 'mines', label: 'Cancha Minada', icon: '⚠️' },
   { key: 'penalty', label: 'Penales', icon: '⚽' },
-  { key: 'scratch', label: 'Rasca', icon: '🎟️' },
+  // { key: 'scratch', label: 'Rasca', icon: '🎟️' },
 ] as const
 
 interface CasinoTabsProps {
@@ -60,7 +64,7 @@ export function CasinoTabs({
       {activeTab === 'slots' && <SlotsGame credits={credits} freeSpin={slotsFree} />}
       {activeTab === 'mines' && <MinesGame freeStart={minesFree} userCredits={credits} />}
       {activeTab === 'penalty' && <PenaltyGame freeStart={penaltyFree} userCredits={credits} />}
-      {activeTab === 'scratch' && <ScratchGame credits={credits} freeCard={scratchFree} />}
+      {/* {activeTab === 'scratch' && <ScratchGame credits={credits} freeCard={scratchFree} />} */}
     </div>
   )
 }
