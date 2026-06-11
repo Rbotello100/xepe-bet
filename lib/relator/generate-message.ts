@@ -28,9 +28,31 @@ IMPORTANTE: respondes SOLO con el texto del mensaje. Sin JSON, sin markdown, sin
  * Fire-and-forget: si falla (Anthropic down, rate limit, etc.) se loguea y
  * sigue. El caller hace `void generateRelatorMessage(...)` para no bloquear.
  */
+// Bloquea repeticiones rapidas del mismo user: si emitio < THROTTLE_SEC seg
+// atras, skip silencioso. Antes 10 cashouts seguidos disparaban 10 llamadas
+// Claude paralelas + 10 inserts al feed.
+const THROTTLE_SEC = 5
+
 export async function generateRelatorMessage(event: RelatorEvent): Promise<void> {
   try {
     const db = createAdminClient()
+
+    // Throttle check: leer ultimo emit del user. Si fresh, skip.
+    const cutoff = new Date(Date.now() - THROTTLE_SEC * 1000).toISOString()
+    const { data: lastEmit } = await db
+      .from('relator_throttle')
+      .select('last_emitted_at')
+      .eq('user_id', event.userId)
+      .maybeSingle()
+    if (lastEmit && lastEmit.last_emitted_at >= cutoff) {
+      // Throttled — el user emitio hace menos de THROTTLE_SEC seg.
+      return
+    }
+    // Reservar el slot antes de la call a Claude. Si Claude falla, el throttle
+    // sigue activo unos segundos pero no es critico (mejor skip extras que
+    // duplicar spam).
+    await db.from('relator_throttle')
+      .upsert({ user_id: event.userId, last_emitted_at: new Date().toISOString() })
 
     // Resolver display_name del user
     const { data: profile } = await db

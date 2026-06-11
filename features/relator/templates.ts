@@ -189,7 +189,12 @@ export async function buildTemplateFeed(): Promise<Post[]> {
     getPartidoCaliente(),
     getApostadorMasActivo24h(),
     getCasinoRachaMala(),
-    admin.from('profiles').select('display_name, total_points, credits').order('total_points', { ascending: false }).limit(5),
+    // Top ranking del leaderboard: ordenamos por credits (no total_points).
+    // El /leaderboard publico usa credits como eje oficial — el relator debe
+    // alinearse para no confundir ("dice top A en feed pero leaderboard
+    // muestra top B"). Mantenemos total_points en el select por si lo
+    // necesitamos como tiebreaker o info adicional.
+    admin.from('profiles').select('display_name, total_points, credits').order('credits', { ascending: false }).limit(5),
     admin
       .from('matches')
       .select('starts_at, group_name, home:home_team_id(name), away:away_team_id(name)')
@@ -353,14 +358,14 @@ export async function buildTemplateFeed(): Promise<Post[]> {
   if (ranking[0]) {
     posts.push({
       kind: 'analysis',
-      content: `Lidera ${ranking[0].display_name} con ${ranking[0].total_points} pts. Difícil moverlo.`,
+      content: `Lidera ${ranking[0].display_name} con $${ranking[0].credits.toLocaleString('es-CL')}. Difícil moverlo.`,
     })
   }
   if (ranking[0] && ranking[1]) {
-    const gap = Math.abs(ranking[0].total_points - ranking[1].total_points)
+    const gap = Math.abs(ranking[0].credits - ranking[1].credits)
     posts.push({
       kind: 'analysis',
-      content: `Distancia 1°-2° en el ranking: ${gap} pts. ${gap < 50 ? 'Pelea apretada.' : 'Hay diferencia.'}`,
+      content: `Distancia 1°-2° en el ranking: $${gap.toLocaleString('es-CL')}. ${gap < 500 ? 'Pelea apretada.' : 'Hay diferencia.'}`,
     })
   }
   if (ranking[4]) {

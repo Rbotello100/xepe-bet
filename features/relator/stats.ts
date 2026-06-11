@@ -174,24 +174,36 @@ export interface ParlayArriesgado {
 
 export async function getParlayArriesgado(): Promise<ParlayArriesgado | null> {
   const admin = createAdminClient()
+  // Filtramos: parlay status='pending' Y TODAS sus legs en status='pending'
+  // (ninguna leg ya resuelta won/lost/void). Antes mostrabamos parlays con
+  // legs ya perdidas como "arriesgado x42 paga $2100" — informacion stale.
+  // El feed corre cada 15min asi que la stale-window es <= 15min sin esto.
   const { data } = await admin
     .from('parlays')
-    .select('amount, total_odds, potential_payout, profile:profiles!user_id(display_name), legs:parlay_legs(id)')
+    .select('id, amount, total_odds, potential_payout, profile:profiles!user_id(display_name), legs:parlay_legs(id, status)')
     .eq('status', 'pending')
     .order('total_odds', { ascending: false })
-    .limit(1)
-    .maybeSingle()
+    .limit(10)  // Tomamos top 10 y filtramos en codigo (no podemos hacer "all legs pending" en una sola query SQL sin join+having)
 
-  if (!data) return null
-  const prof = unwrap(data.profile as unknown as { display_name: string } | { display_name: string }[] | null)
-  const legArr = data.legs as unknown as Array<{ id: string }> | null
-  return {
-    display_name: prof?.display_name ?? 'Alguien',
-    amount: Number(data.amount),
-    total_odds: Number(data.total_odds),
-    potential_payout: Number(data.potential_payout),
-    legs: legArr?.length ?? 0,
+  if (!data || data.length === 0) return null
+
+  type LegRow = { id: string; status: string }
+  // Tomar el primer parlay (top odds) cuyas legs son TODAS pending
+  for (const p of data) {
+    const legArr = (p.legs as unknown as LegRow[] | null) ?? []
+    if (legArr.length === 0) continue
+    const allPending = legArr.every(l => l.status === 'pending')
+    if (!allPending) continue
+    const prof = unwrap(p.profile as unknown as { display_name: string } | { display_name: string }[] | null)
+    return {
+      display_name: prof?.display_name ?? 'Alguien',
+      amount: Number(p.amount),
+      total_odds: Number(p.total_odds),
+      potential_payout: Number(p.potential_payout),
+      legs: legArr.length,
+    }
   }
+  return null
 }
 
 // ----------------------------------------------------------
@@ -256,20 +268,38 @@ export interface PartidoCaliente {
 
 export async function getPartidoCaliente(): Promise<PartidoCaliente | null> {
   const admin = createAdminClient()
+  // Solo bets 1X2 (mismo razonamiento que features/bets/queries.ts:
+  // getCrowdDistribution — picks no-1X2 contaminan el tally del empate).
+  // Y solo bets del match cuyo kickoff aun no llego — si el match ya empezo
+  // las "apuestas pending" pueden estarse resolviendo en este mismo segundo,
+  // info engañosa para el feed.
+  const cutoff = new Date().toISOString()
   const { data } = await admin
     .from('bets')
-    .select('match_id, pick')
+    .select('match_id, pick, match:matches!match_id(starts_at, status)')
     .eq('status', 'pending')
+    .eq('market_type', '1x2')
     .not('match_id', 'is', null)
 
   if (!data || data.length === 0) return null
 
+  type Row = {
+    match_id: string
+    pick: string
+    match?: { starts_at: string; status: string } | { starts_at: string; status: string }[]
+  }
   const tally = new Map<string, { home: number; draw: number; away: number; total: number }>()
-  for (const row of data as { match_id: string; pick: string }[]) {
+  for (const row of data as Row[]) {
+    const matchInfo = Array.isArray(row.match) ? row.match[0] : row.match
+    if (!matchInfo) continue
+    // Skip matches que ya arrancaron o terminaron — stats engañosas.
+    if (matchInfo.starts_at <= cutoff) continue
+    if (matchInfo.status !== 'scheduled' && matchInfo.status !== 'open') continue
     const cur = tally.get(row.match_id) ?? { home: 0, draw: 0, away: 0, total: 0 }
     if (row.pick === 'home' || row.pick === '1') cur.home++
     else if (row.pick === 'away' || row.pick === '2') cur.away++
-    else cur.draw++
+    else if (row.pick === 'draw' || row.pick === 'X') cur.draw++
+    else continue  // pick fuera de 1X2 (defensivo, el filtro market_type=1x2 ya lo previene)
     cur.total++
     tally.set(row.match_id, cur)
   }

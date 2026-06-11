@@ -19,14 +19,24 @@ export async function getDailyTrivia(count = 5): Promise<TriviaQuestion[]> {
 
 export async function canPlayToday(userId: string): Promise<boolean> {
   const supabase = await createServerClient()
-  const today = new Date().toISOString().split('T')[0]
+  // El UNIQUE INDEX `idx_trivia_one_per_day` esta definido como
+  // (user_id, ((completed_at AT TIME ZONE 'UTC')::date)) — usa UTC IMMUTABLE.
+  // Para que el chequeo TS calce con el index calculamos hoy/manana en UTC
+  // y armamos el rango [today UTC midnight, tomorrow UTC midnight) explicito.
+  // Antes hacia `toISOString().split('T')[0]` y comparaba con T00:00:00 sin TZ —
+  // si la sesion DB estaba en otro TZ podia haber drift de 1 dia.
+  const now = new Date()
+  const todayUtcMidnight = new Date(Date.UTC(
+    now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate(), 0, 0, 0, 0,
+  ))
+  const tomorrowUtcMidnight = new Date(todayUtcMidnight.getTime() + 24 * 60 * 60 * 1000)
 
   const { count } = await supabase
     .from('trivia_sessions')
     .select('id', { count: 'exact', head: true })
     .eq('user_id', userId)
-    .gte('completed_at', `${today}T00:00:00`)
-    .lte('completed_at', `${today}T23:59:59`)
+    .gte('completed_at', todayUtcMidnight.toISOString())
+    .lt('completed_at', tomorrowUtcMidnight.toISOString())
 
   return (count ?? 0) === 0
 }

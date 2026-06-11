@@ -4,6 +4,7 @@ import { addCredits } from '@/lib/credits'
 import { SCORE_SYNC_WINDOW_DAYS, type BetPick } from '@/lib/constants'
 import { getMatchesNeedingScoreSync } from './scheduler'
 import { normalizeTeamName } from './discover'
+import { revalidatePath } from 'next/cache'
 import { logOddsApiUsage, type UsageTrigger } from '@/lib/odds-api/usage'
 import { logError } from '@/lib/log/error'
 import { evaluatePick, type Winner } from '@/lib/utils/pick'
@@ -172,6 +173,16 @@ export async function syncFinishedScores(triggeredBy: UsageTrigger = 'cron') {
   const notFound = counters.notFound
   const autoResolved = counters.autoResolved
   const nameMismatch = counters.nameMismatch
+
+  // Invalidar caches de leaderboard/bets/feed cuando hay matches resueltos.
+  // Antes el admin/resolveMatch ya hacia esto pero el cron NO — los users veian
+  // ranking stale hasta 30s post-cron. Solo invalidamos si al menos 1 match
+  // se auto-resolvio para no spamear revalidate sin razon.
+  if (autoResolved > 0) {
+    revalidatePath('/leaderboard')
+    revalidatePath('/bets')
+    revalidatePath('/')
+  }
 
   return {
     pending: pending.length,

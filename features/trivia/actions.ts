@@ -6,6 +6,7 @@ import { revalidatePath } from 'next/cache'
 import { TRIVIA_REWARDS } from '@/lib/constants'
 import { generateRelatorMessage } from '@/lib/relator/generate-message'
 import { addCredits } from '@/lib/credits'
+import { canPlayToday } from './queries'
 
 /**
  * Respuesta recibida del cliente: SOLO la opcion seleccionada y tiempo.
@@ -26,6 +27,15 @@ export async function submitTrivia(answers: TriviaAnswerInput[]) {
   if (!Array.isArray(answers) || answers.length === 0) {
     return { error: 'Respuestas invalidas' }
   }
+
+  // Pre-check idempotente: si el user YA jugo hoy, devolvemos un mensaje
+  // limpio en lugar del 23505 que tira el UNIQUE INDEX. Esto cubre el caso
+  // de double-click rapido en "completar" — el primer request entra al
+  // INSERT, el segundo cae aca y sale con mensaje user-friendly.
+  // El UNIQUE INDEX sigue siendo la garantia real (race entre pre-check y
+  // INSERT atrapa el segundo).
+  const eligible = await canPlayToday(user.id)
+  if (!eligible) return { error: 'Ya jugaste la trivia hoy' }
 
   const admin = createAdminClient()
 
