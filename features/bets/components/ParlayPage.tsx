@@ -25,7 +25,7 @@ export function ParlayPage({ credits }: ParlayPageProps) {
     const result = await placeParlay({
       legs: legs.map(l => ({
         match_id: l.matchId,
-        market_type: '1x2',
+        market_type: l.market_type,
         pick: l.pick,
         odds: l.odds,
       })),

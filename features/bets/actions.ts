@@ -12,10 +12,14 @@ import {
   MAX_PARLAY_ODDS,
   MAX_PARLAY_PAYOUT,
   isValidPick,
+  isValidMarket,
   isUUID,
+  PICK_TO_MARKET,
+  type BetPick,
+  type BetMarket,
 } from '@/lib/constants'
 import { calculateCashOut } from '@/lib/utils/cash-out'
-import { resolveServerOdds, oddsWithinTolerance } from '@/lib/utils/resolve-pick-odds'
+import { resolveServerOddsExtended, oddsWithinTolerance } from '@/lib/utils/resolve-pick-odds'
 import { generateRelatorMessage } from '@/lib/relator/generate-message'
 import { getRachaUsuario } from '@/features/relator/stats'
 import { logError } from '@/lib/log/error'
@@ -108,6 +112,15 @@ export async function placeBet(input: BetInput) {
     void logError('bets.placeBet', 'invalid_pick_bypass', { userId: user.id, pick: input.pick }, 'warn')
     return { error: 'Pick invalido' }
   }
+  if (!isValidMarket(input.market_type)) {
+    void logError('bets.placeBet', 'invalid_market_bypass', { userId: user.id, market: input.market_type }, 'warn')
+    return { error: 'Mercado invalido' }
+  }
+  // Coherencia pick+market: ej pick='btts_yes' con market='1x2' es bug.
+  if (PICK_TO_MARKET[input.pick as BetPick] !== input.market_type) {
+    void logError('bets.placeBet', 'pick_market_mismatch', { userId: user.id, pick: input.pick, market: input.market_type }, 'warn')
+    return { error: 'Pick y mercado no coinciden' }
+  }
   if (!isUUID(input.match_id)) {
     void logError('bets.placeBet', 'invalid_uuid_bypass', { userId: user.id, matchId: input.match_id }, 'warn')
     return { error: 'ID de partido invalido' }
@@ -127,7 +140,12 @@ export async function placeBet(input: BetInput) {
   const matchError = validateMatchOpen(match)
   if (matchError) return { error: matchError }
 
-  const serverOdds = resolveServerOdds(match, input.pick)
+  const serverOdds = await resolveServerOddsExtended(
+    input.match_id,
+    input.market_type as BetMarket,
+    input.pick as BetPick,
+    match,
+  )
   if (!serverOdds) return { error: 'Odds no disponibles para este pick' }
   if (!oddsWithinTolerance(input.odds, serverOdds)) {
     return { error: `Las odds cambiaron. Actual: x${serverOdds}. Recargá para ver las nuevas.` }
@@ -308,6 +326,14 @@ export async function placeParlay(input: ParlayInput) {
     void logError('bets.placeParlay', 'invalid_pick_bypass', { userId: user.id, picks: input.legs.map(l => l.pick) }, 'warn')
     return { error: 'Pick invalido en alguna seleccion' }
   }
+  if (input.legs.some(l => !isValidMarket(l.market_type))) {
+    void logError('bets.placeParlay', 'invalid_market_bypass', { userId: user.id, markets: input.legs.map(l => l.market_type) }, 'warn')
+    return { error: 'Mercado invalido en alguna seleccion' }
+  }
+  if (input.legs.some(l => PICK_TO_MARKET[l.pick as BetPick] !== l.market_type)) {
+    void logError('bets.placeParlay', 'pick_market_mismatch', { userId: user.id, legs: input.legs.map(l => `${l.pick}@${l.market_type}`) }, 'warn')
+    return { error: 'Pick y mercado no coinciden en alguna seleccion' }
+  }
   if (input.legs.some(l => !isUUID(l.match_id))) {
     void logError('bets.placeParlay', 'invalid_uuid_bypass', { userId: user.id, matchIds: input.legs.map(l => l.match_id) }, 'warn')
     return { error: 'ID de partido invalido en alguna seleccion' }
@@ -335,7 +361,12 @@ export async function placeParlay(input: ParlayInput) {
     const err = validateMatchOpen(match)
     if (err) return { error: `${err} (una de las selecciones)` }
 
-    const serverOdds = resolveServerOdds(match, leg.pick)
+    const serverOdds = await resolveServerOddsExtended(
+      leg.match_id,
+      leg.market_type as BetMarket,
+      leg.pick as BetPick,
+      match,
+    )
     if (!serverOdds) return { error: 'Odds no disponibles para una de las selecciones' }
     if (!oddsWithinTolerance(leg.odds, serverOdds)) {
       return { error: `Las odds de una seleccion cambiaron. Recargá para ver las nuevas.` }

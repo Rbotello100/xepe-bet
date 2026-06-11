@@ -1,7 +1,150 @@
-import { fetchOdds } from '@/lib/odds-api/client'
+import { fetchOdds, fetchEventOdds } from '@/lib/odds-api/client'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { getMatchesNeedingOdds } from './scheduler'
 import { logOddsApiUsage } from '@/lib/odds-api/usage'
+
+const EXTRA_MARKETS = ['btts', 'double_chance', 'draw_no_bet', 'alternate_totals']
+type ExtraTriggeredBy = 'cron' | 'admin_manual' | 'test'
+
+/**
+ * Para 1 match ya sincronizado con h2h, llama al endpoint individual
+ * /events/{eventId}/odds para extraer odds de mercados Tier 2 y upsertear
+ * en `match_market_odds`. Costo: 4 mercados x 1 region = 4 creditos por call.
+ *
+ * Mapeos de outcomes:
+ *  - btts -> 'Yes'/'No' -> pick 'btts_yes'/'btts_no'
+ *  - double_chance -> 'Home or Draw' -> '1X', 'Away or Draw' -> 'X2',
+ *      'Home or Away' -> '12'
+ *  - draw_no_bet -> outcome.name == home_team -> 'dnb_home', else 'dnb_away'
+ *  - alternate_totals -> filtrar point in (1.5, 2.5, 3.5) -> market_type
+ *      'totals_1.5'/'totals_2.5'/'totals_3.5', pick 'over_X.5'/'under_X.5'
+ *
+ * Sanity: odds en [1.01, 99] y point exacto. Si falla, skip silencioso.
+ */
+async function syncExtraMarketsForMatch(
+  matchId: string,
+  externalId: string,
+  homeTeam: string,
+  awayTeam: string,
+  sportKey: string,
+  triggeredBy: ExtraTriggeredBy,
+): Promise<{ success: boolean; remaining: number | null; rowsUpserted: number; error?: string }> {
+  const supabase = createAdminClient()
+  const res = await fetchEventOdds(externalId, EXTRA_MARKETS, 'eu', sportKey)
+
+  if (res.error || !res.data) {
+    await logOddsApiUsage({
+      endpoint: 'event_odds',
+      sport_key: sportKey,
+      credits_used: EXTRA_MARKETS.length,
+      remaining: res.remaining,
+      triggered_by: triggeredBy,
+      result_summary: { match_id: matchId, markets: EXTRA_MARKETS },
+      error: res.error ?? 'no_data',
+    })
+    return { success: false, remaining: res.remaining, rowsUpserted: 0, error: res.error }
+  }
+
+  const event = res.data
+  if (!event.bookmakers?.length) {
+    return { success: false, remaining: res.remaining, rowsUpserted: 0, error: 'no_bookmaker' }
+  }
+
+  // No todos los bookmakers soportan todos los mercados (ej Pinnacle no
+  // expone double_chance para el Mundial — solo William Hill). Iteramos
+  // por mercado y tomamos el primer bookmaker que lo ofrezca, priorizando
+  // pinnacle si esta disponible (mejores odds, menor margen).
+  const collectMarket = (key: string) => {
+    const prioritized = [
+      event.bookmakers.find(b => b.key === 'pinnacle'),
+      ...event.bookmakers.filter(b => b.key !== 'pinnacle'),
+    ].filter((b): b is NonNullable<typeof b> => Boolean(b))
+    for (const b of prioritized) {
+      const m = b.markets.find(mk => mk.key === key)
+      if (m) return m
+    }
+    return null
+  }
+  const marketsToProcess = (['btts', 'double_chance', 'draw_no_bet', 'alternate_totals', 'totals'] as const)
+    .map(k => collectMarket(k))
+    .filter((m): m is NonNullable<typeof m> => Boolean(m))
+
+  const rows: Array<{ match_id: string; market_type: string; pick: string; odds: number; point: number | null }> = []
+  const sanity = (p: number | null | undefined): number | null => {
+    if (p == null || !Number.isFinite(p)) return null
+    if (p < 1.01 || p > 99) return null
+    return Math.round(p * 100) / 100
+  }
+  const allowedTotalsPoints = new Set([1.5, 2.5, 3.5])
+
+  for (const m of marketsToProcess) {
+    if (m.key === 'btts') {
+      for (const o of m.outcomes) {
+        const price = sanity(o.price)
+        if (price == null) continue
+        if (o.name === 'Yes') rows.push({ match_id: matchId, market_type: 'btts', pick: 'btts_yes', odds: price, point: null })
+        else if (o.name === 'No') rows.push({ match_id: matchId, market_type: 'btts', pick: 'btts_no', odds: price, point: null })
+      }
+    } else if (m.key === 'double_chance') {
+      // Las APIs varian en el nombre: "Home or Draw" / "Draw or Home" — toleramos ambos
+      const matchName = (label: string, a: string, b: string) => {
+        const norm = label.toLowerCase()
+        return norm.includes(a.toLowerCase()) && norm.includes(b.toLowerCase())
+      }
+      for (const o of m.outcomes) {
+        const price = sanity(o.price)
+        if (price == null) continue
+        const n = o.name
+        if (matchName(n, homeTeam, 'draw') || matchName(n, 'home', 'draw')) {
+          rows.push({ match_id: matchId, market_type: 'double_chance', pick: '1X', odds: price, point: null })
+        } else if (matchName(n, awayTeam, 'draw') || matchName(n, 'away', 'draw')) {
+          rows.push({ match_id: matchId, market_type: 'double_chance', pick: 'X2', odds: price, point: null })
+        } else if (matchName(n, homeTeam, awayTeam) || matchName(n, 'home', 'away')) {
+          rows.push({ match_id: matchId, market_type: 'double_chance', pick: '12', odds: price, point: null })
+        }
+      }
+    } else if (m.key === 'draw_no_bet') {
+      for (const o of m.outcomes) {
+        const price = sanity(o.price)
+        if (price == null) continue
+        if (o.name === homeTeam) rows.push({ match_id: matchId, market_type: 'draw_no_bet', pick: 'dnb_home', odds: price, point: null })
+        else if (o.name === awayTeam) rows.push({ match_id: matchId, market_type: 'draw_no_bet', pick: 'dnb_away', odds: price, point: null })
+      }
+    } else if (m.key === 'alternate_totals' || m.key === 'totals') {
+      // alternate_totals trae varios puntos; el principal `totals` solo 2.5 (en MUNDIAL 2.25)
+      for (const o of m.outcomes) {
+        const point = o.point
+        if (point == null || !allowedTotalsPoints.has(point)) continue
+        const price = sanity(o.price)
+        if (price == null) continue
+        const pStr = String(point) // "1.5" / "2.5" / "3.5"
+        const market_type = 'totals_' + pStr
+        if (o.name === 'Over') rows.push({ match_id: matchId, market_type, pick: `over_${pStr}`, odds: price, point })
+        else if (o.name === 'Under') rows.push({ match_id: matchId, market_type, pick: `under_${pStr}`, odds: price, point })
+      }
+    }
+  }
+
+  let rowsUpserted = 0
+  if (rows.length > 0) {
+    const { error } = await supabase.from('match_market_odds').upsert(rows, {
+      onConflict: 'match_id,market_type,pick',
+    })
+    if (!error) rowsUpserted = rows.length
+  }
+
+  await logOddsApiUsage({
+    endpoint: 'event_odds',
+    sport_key: sportKey,
+    credits_used: EXTRA_MARKETS.length,
+    remaining: res.remaining,
+    triggered_by: triggeredBy,
+    result_summary: { match_id: matchId, markets_returned: marketsToProcess.map(m => m.key), rows_upserted: rowsUpserted },
+    error: null,
+  })
+
+  return { success: true, remaining: res.remaining, rowsUpserted }
+}
 
 type TriggeredBy = 'cron' | 'admin_manual' | 'test'
 
@@ -132,7 +275,24 @@ export async function syncMatchOdds(
           })
           .eq('id', match.id)
 
-        if (!error) synced++
+        if (!error) {
+          synced++
+          // Pegamos al endpoint individual para mercados Tier 2 (4 creditos).
+          // No bloquea si falla — el 1X2 ya quedo guardado y el user puede
+          // apostar. Los extras se reintentan en el proximo sync.
+          if (match.external_id) {
+            try {
+              await syncExtraMarketsForMatch(
+                match.id,
+                match.external_id,
+                event.home_team,
+                event.away_team,
+                key,
+                triggeredBy,
+              )
+            } catch { /* ignore — ya logueado dentro */ }
+          }
+        }
       }
     } catch (err) {
       errorMsg = (err as Error).message

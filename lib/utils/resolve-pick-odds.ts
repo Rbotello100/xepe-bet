@@ -1,4 +1,6 @@
 import { calculateDerivedMarkets } from './derived-odds'
+import { createAdminClient } from '@/lib/supabase/admin'
+import type { BetMarket, BetPick } from '@/lib/constants'
 
 /**
  * Dado un match con sus odds 1X2 y un pick (home/away/draw/derivado), retorna
@@ -43,4 +45,56 @@ export function oddsWithinTolerance(clientOdds: number, serverOdds: number, tole
   if (!Number.isFinite(clientOdds) || clientOdds <= 0) return false
   if (!Number.isFinite(serverOdds) || serverOdds <= 0) return false
   return Math.abs(clientOdds - serverOdds) / serverOdds <= tolerance
+}
+
+/**
+ * Server-side resolution de odds para mercados extra (Tier 1+2).
+ *
+ * Estrategia:
+ *  - Si market_type='1x2' -> lee de matches.odds_home/draw/away (legacy directo).
+ *  - Si market_type es otro -> consulta match_market_odds donde se guardo el
+ *    valor real sincronizado por el cron.
+ *
+ * Esto reemplaza a la calculacion derivada del cliente (que se usaba como
+ * proxy hasta que tuvimos el sync de mercados extra). Las odds derivadas
+ * eran aproximadas; las de match_market_odds vienen DIRECTO de Pinnacle/
+ * William Hill segun cual ofrezca el mercado.
+ *
+ * Retorna null si no encontramos odds — el caller debe rechazar la apuesta.
+ */
+export async function resolveServerOddsExtended(
+  matchId: string,
+  market_type: BetMarket,
+  pick: BetPick,
+  fallbackMatch?: { odds_home: number | null; odds_draw: number | null; odds_away: number | null },
+): Promise<number | null> {
+  // 1X2: lee directo de matches (es el dato canonico, no hay riesgo de skew).
+  if (market_type === '1x2' && fallbackMatch) {
+    return resolveServerOdds(fallbackMatch, pick)
+  }
+
+  // Mercados extra: lee de match_market_odds
+  const admin = createAdminClient()
+  const { data } = await admin
+    .from('match_market_odds')
+    .select('odds')
+    .eq('match_id', matchId)
+    .eq('market_type', market_type)
+    .eq('pick', pick)
+    .maybeSingle()
+
+  if (data?.odds) return Number(data.odds)
+
+  // Fallback: si por algun motivo no tenemos la row (cron no corrio aun),
+  // intentamos derivar de los 1X2 si tenemos los datos del match. Es menos
+  // preciso pero permite que el user pueda apostar igual.
+  if (fallbackMatch && fallbackMatch.odds_home && fallbackMatch.odds_draw && fallbackMatch.odds_away) {
+    const markets = calculateDerivedMarkets(fallbackMatch.odds_home, fallbackMatch.odds_draw, fallbackMatch.odds_away)
+    for (const m of markets) {
+      const opt = m.options.find(o => o.pick === pick)
+      if (opt) return opt.odds
+    }
+  }
+
+  return null
 }

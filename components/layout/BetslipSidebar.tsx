@@ -35,7 +35,7 @@ export function BetslipSidebar() {
       const l = legs[0]
       const result = await placeBet({
         match_id: l.matchId,
-        market_type: '1x2',
+        market_type: l.market_type,
         pick: l.pick,
         odds: l.odds,
         amount: numAmount,
@@ -49,7 +49,7 @@ export function BetslipSidebar() {
       }
     } else {
       const result = await placeParlay({
-        legs: legs.map(l => ({ match_id: l.matchId, market_type: '1x2', pick: l.pick, odds: l.odds })),
+        legs: legs.map(l => ({ match_id: l.matchId, market_type: l.market_type, pick: l.pick, odds: l.odds })),
         amount: numAmount,
       })
       if (result.error) {

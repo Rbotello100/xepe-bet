@@ -1,6 +1,6 @@
 import { createAdminClient } from '@/lib/supabase/admin'
 
-export type UsageEndpoint = 'odds' | 'scores' | 'events'
+export type UsageEndpoint = 'odds' | 'scores' | 'events' | 'event_odds'
 export type UsageTrigger = 'cron' | 'admin_manual' | 'import' | 'test'
 
 export interface UsageLog {

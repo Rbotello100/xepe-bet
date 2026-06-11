@@ -8,8 +8,8 @@ import { syncFinishedScores, autoResolveMatch, voidBetsForCancelledMatch } from 
 import { discoverAllSports, type DiscoverResult } from '@/lib/sync/discover'
 import { addCredits } from '@/lib/credits'
 import { logError } from '@/lib/log/error'
-import { pickMatchesWinner } from '@/lib/utils/pick'
-import { ACTIVE_SPORT_KEYS, type BetPick } from '@/lib/constants'
+import { evaluatePick } from '@/lib/utils/pick'
+import { ACTIVE_SPORT_KEYS, type BetPick, type BetMarket } from '@/lib/constants'
 
 /**
  * Devuelve null si el request es de un admin válido; devuelve `{ error }` si falla.
@@ -90,22 +90,40 @@ export async function resolveMatch(matchId: string, homeScore: number, awayScore
   let betsWon = 0
   let betsLost = 0
   for (const bet of bets ?? []) {
-    const betWon = pickMatchesWinner(bet.pick as BetPick, winner)
+    // evaluatePick ramifica por market_type. Para 1X2 mantiene comportamiento.
+    // Para btts/totals/double_chance/dnb settlement correcto. 'void' (DNB con
+    // empate) -> cancelled + refund.
+    const outcome = evaluatePick(
+      (bet.market_type ?? '1x2') as BetMarket,
+      bet.pick as BetPick,
+      homeScore,
+      awayScore,
+    )
+    const nextStatus = outcome === 'won' ? 'won' : outcome === 'void' ? 'cancelled' : 'lost'
 
     const { data: updatedBet } = await admin.from('bets').update({
-      status: betWon ? 'won' : 'lost',
+      status: nextStatus,
       resolved_at: new Date().toISOString(),
     }).eq('id', bet.id).eq('status', 'pending').select('id').maybeSingle()
 
     if (!updatedBet) continue  // ya procesada por otra invocacion
 
-    if (betWon) {
+    if (outcome === 'won') {
       betsWon++
       const paid = await addCredits(bet.user_id, bet.potential_payout, 'win', `Gano apuesta ${bet.pick} x${bet.odds_at_placement}`, bet.id)
       if (!paid.success) {
-        // La bet ya quedo marcada won. addCredits logueo el error. Logueamos
-        // duplicado con contexto admin para que sea trivial encontrarlo en obs.
         await logError('admin.resolveMatch.payBet', paid.error ?? 'pago_fallido', { betId: bet.id, userId: bet.user_id, amount: bet.potential_payout, matchId }, 'critical')
+      }
+    } else if (outcome === 'void') {
+      // Refund del stake (Draw No Bet con empate). reference_id estable con
+      // sufijo '-void' para idempotencia.
+      const refunded = await addCredits(
+        bet.user_id, bet.amount, 'refund',
+        `Refund ${bet.pick} (Draw No Bet con empate)`,
+        bet.id + '-void',
+      )
+      if (!refunded.success) {
+        await logError('admin.resolveMatch.voidRefund', refunded.error ?? 'refund_fallido', { betId: bet.id, userId: bet.user_id, amount: bet.amount, matchId }, 'critical')
       }
     } else {
       betsLost++
@@ -118,10 +136,19 @@ export async function resolveMatch(matchId: string, homeScore: number, awayScore
   const { data: parlayLegs } = await admin.from('parlay_legs').select('*').eq('match_id', matchId).eq('status', 'pending')
   let parlaysResolved = 0
   for (const leg of parlayLegs ?? []) {
-    const legWon = pickMatchesWinner(leg.pick as BetPick, winner)
+    // evaluatePick ramifica por market_type. 'void' de leg (DNB con empate)
+    // se trata igual que void por match cancelado — el agregado del parlay
+    // lo maneja con su logica de hasVoid/hasLost.
+    const outcome = evaluatePick(
+      (leg.market_type ?? '1x2') as BetMarket,
+      leg.pick as BetPick,
+      homeScore,
+      awayScore,
+    )
+    const nextLegStatus = outcome === 'won' ? 'won' : outcome === 'void' ? 'void' : 'lost'
 
     await admin.from('parlay_legs').update({
-      status: legWon ? 'won' : 'lost',
+      status: nextLegStatus,
     }).eq('id', leg.id).eq('status', 'pending')
 
     const { data: allLegs } = await admin.from('parlay_legs').select('status').eq('parlay_id', leg.parlay_id)

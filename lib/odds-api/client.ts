@@ -44,3 +44,31 @@ export async function fetchEvents(sportKey: string = SPORT_KEY): Promise<OddsAPI
   if (!res.ok) throw new Error(`Events API error: ${res.status}`)
   return res.json()
 }
+
+/**
+ * Endpoint individual /events/{id}/odds — soporta mercados extra que el
+ * endpoint principal /odds no expone (btts, double_chance, draw_no_bet,
+ * alternate_totals, etc).
+ *
+ * Costo: `markets.length * regions.length` creditos por call. Para nuestro
+ * caso (4 markets x 1 region) = 4 creditos por evento.
+ *
+ * Devuelve un objeto unico (no array) con bookmakers[]. La estructura interna
+ * de bookmakers[].markets[].outcomes[] es identica al endpoint /odds.
+ */
+export async function fetchEventOdds(
+  eventId: string,
+  markets: string[],
+  regions = 'eu',
+  sportKey: string = SPORT_KEY,
+): Promise<{ data: OddsAPIEvent | null; remaining: number; error?: string }> {
+  const url = `${BASE_URL}/sports/${sportKey}/events/${eventId}/odds?apiKey=${getApiKey()}&markets=${markets.join(',')}&regions=${regions}&oddsFormat=decimal`
+  const res = await fetch(url)
+  const remaining = parseInt(res.headers.get('x-requests-remaining') ?? '0', 10)
+  if (!res.ok) {
+    const body = await res.text()
+    return { data: null, remaining, error: `event-odds ${res.status}: ${body.slice(0, 200)}` }
+  }
+  const data = await res.json() as OddsAPIEvent
+  return { data, remaining }
+}

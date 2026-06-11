@@ -5,7 +5,8 @@ import { SCORE_SYNC_WINDOW_DAYS, type BetPick } from '@/lib/constants'
 import { getMatchesNeedingScoreSync } from './scheduler'
 import { logOddsApiUsage, type UsageTrigger } from '@/lib/odds-api/usage'
 import { logError } from '@/lib/log/error'
-import { pickMatchesWinner, type Winner } from '@/lib/utils/pick'
+import { evaluatePick, type Winner } from '@/lib/utils/pick'
+import type { BetMarket } from '@/lib/constants'
 import type { OddsScoreEvent } from '@/lib/odds-api/types'
 
 // Tipos explicitos para el settlement — previenen any-creep en autoResolveMatch.
@@ -15,6 +16,7 @@ interface PendingBetRow {
   id: string
   user_id: string
   pick: BetPick
+  market_type: BetMarket
   amount: number
   odds_at_placement: number
   potential_payout: number
@@ -32,6 +34,7 @@ interface PendingParlayLegRow {
   id: string
   parlay_id: string
   pick: BetPick
+  market_type: BetMarket
 }
 
 /**
@@ -270,23 +273,29 @@ export async function autoResolveMatch(matchId: string, homeScore: number, awayS
 
   const { data: bets } = await admin
     .from('bets')
-    .select('id, user_id, pick, amount, odds_at_placement, potential_payout')
+    .select('id, user_id, pick, market_type, amount, odds_at_placement, potential_payout')
     .eq('match_id', matchId)
     .eq('status', 'pending')
     .returns<PendingBetRow[]>()
 
   await Promise.all((bets ?? []).map(async (bet) => {
-    const betWon = pickMatchesWinner(bet.pick, winner)
+    // evaluatePick ramifica por market_type. Para 1X2 mantiene comportamiento
+    // viejo. Para btts/totals/double_chance/dnb agrega settlement correcto.
+    // 'void' (solo en Draw No Bet con empate) -> bet cancelled + refund stake.
+    const outcome = evaluatePick(bet.market_type, bet.pick, homeScore, awayScore)
+    const nextStatus = outcome === 'won' ? 'won' : outcome === 'void' ? 'cancelled' : 'lost'
 
     const { data: updatedBet } = await admin
       .from('bets')
-      .update({ status: betWon ? 'won' : 'lost', resolved_at: new Date().toISOString() })
+      .update({ status: nextStatus, resolved_at: new Date().toISOString() })
       .eq('id', bet.id)
       .eq('status', 'pending')
       .select('id')
       .maybeSingle()
 
-    if (updatedBet && betWon) {
+    if (!updatedBet) return
+
+    if (outcome === 'won') {
       const paid = await addCredits(bet.user_id, bet.potential_payout, 'win', `Gano apuesta ${bet.pick} x${bet.odds_at_placement}`, bet.id)
       if (!paid.success) {
         // Bet quedo marcada como won pero el pago fallo — descuadre balance vs ledger.
@@ -295,12 +304,27 @@ export async function autoResolveMatch(matchId: string, homeScore: number, awayS
           betId: bet.id, userId: bet.user_id, amount: bet.potential_payout, matchId,
         }, 'critical')
       }
+    } else if (outcome === 'void') {
+      // Refund del stake con reference_id estable. Sufijo '-void' diferencia
+      // del posible 'win' que comparta el bet.id como referencia. UNIQUE
+      // constraint en credit_transactions(user_id, type, reference_id)
+      // garantiza idempotencia si se reintenta.
+      const refunded = await addCredits(
+        bet.user_id, bet.amount, 'refund',
+        `Refund apuesta ${bet.pick} (Draw No Bet con empate)`,
+        bet.id + '-void',
+      )
+      if (!refunded.success) {
+        void logError('sync.autoResolveMatch.voidRefundFailed', refunded.error ?? 'unknown', {
+          betId: bet.id, userId: bet.user_id, amount: bet.amount, matchId,
+        }, 'critical')
+      }
     }
   }))
 
   const { data: parlayLegs } = await admin
     .from('parlay_legs')
-    .select('id, parlay_id, pick')
+    .select('id, parlay_id, pick, market_type')
     .eq('match_id', matchId)
     .eq('status', 'pending')
     .returns<PendingParlayLegRow[]>()
@@ -311,8 +335,13 @@ export async function autoResolveMatch(matchId: string, homeScore: number, awayS
   // simpler: procesarlos en serie. La cantidad de parlays con leg en un mismo
   // match suele ser baja vs. bets individuales.
   for (const leg of parlayLegs ?? []) {
-    const legWon = pickMatchesWinner(leg.pick, winner)
-    await admin.from('parlay_legs').update({ status: legWon ? 'won' : 'lost' }).eq('id', leg.id).eq('status', 'pending')
+    // evaluatePick ramifica por market_type. Misma logica que en bets.
+    // Si una leg sale 'void' (DNB con empate), tratamos como 'void' status
+    // de la leg — el agregado del parlay ya maneja void (lo recalcula como
+    // si la leg fuera neutral, mismo patron que cuando un match se cancela).
+    const outcome = evaluatePick(leg.market_type, leg.pick, homeScore, awayScore)
+    const nextLegStatus = outcome === 'won' ? 'won' : outcome === 'void' ? 'void' : 'lost'
+    await admin.from('parlay_legs').update({ status: nextLegStatus }).eq('id', leg.id).eq('status', 'pending')
 
     const { data: allLegs } = await admin.from('parlay_legs').select('status').eq('parlay_id', leg.parlay_id)
     const allResolved = allLegs?.every(l => l.status !== 'pending')

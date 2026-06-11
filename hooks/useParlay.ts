@@ -6,6 +6,7 @@ import { useUser } from './useUser'
 export interface ParlayLeg {
   matchId: string
   matchLabel: string
+  market_type: string
   pick: string
   pickLabel: string
   odds: number
@@ -20,7 +21,19 @@ function notifyParlayUpdate() {
   queueMicrotask(() => window.dispatchEvent(new CustomEvent('parlay-updated')))
 }
 
-const VALID_PICKS = new Set(['home', 'draw', 'away', '1', 'X', '2'])
+const VALID_PICKS = new Set([
+  'home', 'draw', 'away', '1', 'X', '2',
+  '1X', 'X2', '12',
+  'btts_yes', 'btts_no',
+  'dnb_home', 'dnb_away',
+  'over_1.5', 'under_1.5',
+  'over_2.5', 'under_2.5',
+  'over_3.5', 'under_3.5',
+])
+const VALID_MARKETS = new Set([
+  '1x2', 'double_chance', 'btts', 'draw_no_bet',
+  'totals_1.5', 'totals_2.5', 'totals_3.5',
+])
 
 // Acepta solo legs con shape valido. Antes de este filtro, un leg con `pick`
 // corrupto (legacy, version vieja del codigo) hacia que placeParlay tirara
@@ -34,6 +47,8 @@ function isValidLeg(l: unknown): l is ParlayLeg {
     && typeof x.matchLabel === 'string'
     && typeof x.pick === 'string'
     && VALID_PICKS.has(x.pick)
+    && typeof x.market_type === 'string'
+    && VALID_MARKETS.has(x.market_type)
     && typeof x.pickLabel === 'string'
     && typeof x.odds === 'number'
     && Number.isFinite(x.odds)

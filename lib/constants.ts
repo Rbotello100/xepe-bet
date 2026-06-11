@@ -3,13 +3,57 @@ export const INITIAL_CREDITS = 1000
 export const MIN_BET = 10
 export const MAX_BET = 500
 
-// Whitelist de picks aceptados. La RPC SQL tiene CHECK constraint paralelo
-// (migration 20260603000001_pick_whitelist.sql). El TS valida pre-RPC para
-// mejor UX (mensaje claro en vez de error de Postgres).
-export const VALID_PICKS = ['home', 'draw', 'away', '1', 'X', '2'] as const
+// Whitelist de picks aceptados (Tier 1+2 — 19 picks).
+// La RPC SQL tiene CHECK constraint paralelo (migration
+// 20260610000001_pick_whitelist_extended.sql + atomic_bets_v3). El TS valida
+// pre-RPC para mejor UX (mensaje claro en vez de error de Postgres).
+export const VALID_PICKS = [
+  // 1X2
+  'home', 'draw', 'away', '1', 'X', '2',
+  // Doble chance
+  '1X', 'X2', '12',
+  // Both Teams To Score
+  'btts_yes', 'btts_no',
+  // Draw No Bet
+  'dnb_home', 'dnb_away',
+  // Over/Under variados
+  'over_1.5', 'under_1.5',
+  'over_2.5', 'under_2.5',
+  'over_3.5', 'under_3.5',
+] as const
 export type BetPick = typeof VALID_PICKS[number]
 export function isValidPick(p: unknown): p is BetPick {
   return typeof p === 'string' && (VALID_PICKS as readonly string[]).includes(p)
+}
+
+// Whitelist de markets aceptados. Hoy bets.market_type aceptaba cualquier
+// string — desde migration 20260610000001 hay CHECK constraint paralelo.
+export const VALID_MARKETS = [
+  '1x2',
+  'double_chance',
+  'btts',
+  'draw_no_bet',
+  'totals_1.5',
+  'totals_2.5',
+  'totals_3.5',
+] as const
+export type BetMarket = typeof VALID_MARKETS[number]
+export function isValidMarket(m: unknown): m is BetMarket {
+  return typeof m === 'string' && (VALID_MARKETS as readonly string[]).includes(m)
+}
+
+// Mapeo pick -> market_type esperado. Sirve como defense-in-depth en el server
+// para detectar inconsistencias (ej. pick='btts_yes' con market='1x2' es un
+// bug del client).
+export const PICK_TO_MARKET: Record<BetPick, BetMarket> = {
+  home: '1x2', draw: '1x2', away: '1x2',
+  '1': '1x2', 'X': '1x2', '2': '1x2',
+  '1X': 'double_chance', 'X2': 'double_chance', '12': 'double_chance',
+  btts_yes: 'btts', btts_no: 'btts',
+  dnb_home: 'draw_no_bet', dnb_away: 'draw_no_bet',
+  'over_1.5': 'totals_1.5', 'under_1.5': 'totals_1.5',
+  'over_2.5': 'totals_2.5', 'under_2.5': 'totals_2.5',
+  'over_3.5': 'totals_3.5', 'under_3.5': 'totals_3.5',
 }
 
 // UUID v4 (relajado: acepta cualquier UUID con formato 8-4-4-4-12 hex).

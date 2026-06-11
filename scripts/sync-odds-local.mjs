@@ -45,6 +45,70 @@ async function fetchOdds() {
   return { data, remaining }
 }
 
+const EXTRA_MARKETS = ['btts', 'double_chance', 'draw_no_bet', 'alternate_totals']
+const ALLOWED_TOTALS = new Set([1.5, 2.5, 3.5])
+
+async function fetchEventExtraOdds(eventId) {
+  const url = `https://api.the-odds-api.com/v4/sports/${SPORT_KEY}/events/${eventId}/odds/?regions=eu&markets=${EXTRA_MARKETS.join(',')}&apiKey=${env.THE_ODDS_API_KEY}`
+  const res = await fetch(url)
+  if (!res.ok) return { data: null, remaining: parseInt(res.headers.get('x-requests-remaining') ?? '0', 10), error: `HTTP ${res.status}` }
+  const data = await res.json()
+  const remaining = parseInt(res.headers.get('x-requests-remaining') ?? '0', 10)
+  return { data, remaining }
+}
+
+function parseEventExtraOdds(matchId, eventData) {
+  const book = eventData.bookmakers.find(b => b.key === 'pinnacle') ?? eventData.bookmakers[0]
+  if (!book) return []
+  const home = eventData.home_team
+  const away = eventData.away_team
+  const rows = []
+  for (const m of book.markets) {
+    if (m.key === 'btts') {
+      for (const o of m.outcomes) {
+        const odds = sanity(o.price)
+        if (odds == null) continue
+        if (o.name === 'Yes') rows.push({ match_id: matchId, market_type: 'btts', pick: 'btts_yes', odds, point: null })
+        else if (o.name === 'No') rows.push({ match_id: matchId, market_type: 'btts', pick: 'btts_no', odds, point: null })
+      }
+    } else if (m.key === 'double_chance') {
+      const has = (l, a, b) => {
+        const n = l.toLowerCase()
+        return n.includes(a.toLowerCase()) && n.includes(b.toLowerCase())
+      }
+      for (const o of m.outcomes) {
+        const odds = sanity(o.price)
+        if (odds == null) continue
+        if (has(o.name, home, 'draw') || has(o.name, 'home', 'draw')) {
+          rows.push({ match_id: matchId, market_type: 'double_chance', pick: '1X', odds, point: null })
+        } else if (has(o.name, away, 'draw') || has(o.name, 'away', 'draw')) {
+          rows.push({ match_id: matchId, market_type: 'double_chance', pick: 'X2', odds, point: null })
+        } else if (has(o.name, home, away) || has(o.name, 'home', 'away')) {
+          rows.push({ match_id: matchId, market_type: 'double_chance', pick: '12', odds, point: null })
+        }
+      }
+    } else if (m.key === 'draw_no_bet') {
+      for (const o of m.outcomes) {
+        const odds = sanity(o.price)
+        if (odds == null) continue
+        if (o.name === home) rows.push({ match_id: matchId, market_type: 'draw_no_bet', pick: 'dnb_home', odds, point: null })
+        else if (o.name === away) rows.push({ match_id: matchId, market_type: 'draw_no_bet', pick: 'dnb_away', odds, point: null })
+      }
+    } else if (m.key === 'alternate_totals' || m.key === 'totals') {
+      for (const o of m.outcomes) {
+        if (o.point == null || !ALLOWED_TOTALS.has(o.point)) continue
+        const odds = sanity(o.price)
+        if (odds == null) continue
+        const p = String(o.point)
+        const market_type = 'totals_' + p
+        if (o.name === 'Over') rows.push({ match_id: matchId, market_type, pick: `over_${p}`, odds, point: o.point })
+        else if (o.name === 'Under') rows.push({ match_id: matchId, market_type, pick: `under_${p}`, odds, point: o.point })
+      }
+    }
+  }
+  return rows
+}
+
 function sanity(p) {
   if (p === null || p === undefined) return null
   if (!Number.isFinite(p)) return null
@@ -65,6 +129,7 @@ async function main() {
   console.log(`The Odds API: ${events.length} eventos disponibles | ${remaining} creditos restantes`)
 
   let synced = 0, notFound = 0, noBook = 0
+  let extraSynced = 0, extraRemaining = remaining
   for (const match of matches) {
     if (!match.external_id) {
       await sb.from('matches').update({ odds_sync_attempts: 999 }).eq('id', match.id)
@@ -96,7 +161,25 @@ async function main() {
       odds_synced: true,
       status: 'open',
     }).eq('id', match.id)
-    if (!error) synced++
+    if (!error) {
+      synced++
+      // Sync de mercados extra (BTTS, Doble chance, DNB, O/U 1.5/2.5/3.5)
+      try {
+        const extra = await fetchEventExtraOdds(match.external_id)
+        if (extra.data) {
+          const rows = parseEventExtraOdds(match.id, extra.data)
+          if (rows.length > 0) {
+            const { error: upErr } = await sb.from('match_market_odds').upsert(rows, {
+              onConflict: 'match_id,market_type,pick',
+            })
+            if (!upErr) extraSynced += rows.length
+          }
+        }
+        extraRemaining = extra.remaining
+      } catch (err) {
+        console.log('   ⚠ extra markets fallo para', match.id, ':', err.message)
+      }
+    }
   }
 
   // Audit
@@ -109,8 +192,9 @@ async function main() {
     result_summary: { pending: matches.length, synced, not_found: notFound, no_bookmaker: noBook },
   })
 
-  console.log(`\n✓ Synced: ${synced} | not_found: ${notFound} | no_bookmaker: ${noBook}`)
-  console.log(`  Creditos restantes en The Odds API: ${remaining}`)
+  console.log(`\n✓ Synced 1X2: ${synced} | not_found: ${notFound} | no_bookmaker: ${noBook}`)
+  console.log(`  Synced mercados extra (rows en match_market_odds): ${extraSynced}`)
+  console.log(`  Creditos restantes en The Odds API: ${extraRemaining}`)
 }
 
 main().catch(err => { console.error('FATAL:', err.message); process.exit(1) })

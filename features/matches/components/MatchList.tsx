@@ -50,12 +50,18 @@ function bucketFor(filter: DateFilter, todayKey: string, tomorrowKey: string, we
 export async function MatchList({ filter = 'hoy' }: MatchListProps) {
   const supabase = await createServerClient()
 
-  const [{ data, error }, crowd] = await Promise.all([
+  const [{ data, error }, crowd, { data: marketOddsRows }] = await Promise.all([
     supabase
       .from('matches')
       .select('*, home_team:teams!home_team_id(*), away_team:teams!away_team_id(*)')
       .order('starts_at'),
     getCrowdDistribution(),
+    // Odds de mercados extra (BTTS, doble chance, DNB, totals). 1X2 sigue viniendo
+    // de matches.odds_*. Esto trae ~10-12 rows por partido — para 72 partidos
+    // del Mundial = ~800 rows. Una query, sin joins, sub-100ms.
+    supabase
+      .from('match_market_odds')
+      .select('match_id, market_type, pick, odds, point'),
   ])
 
   if (error) {
@@ -76,6 +82,15 @@ export async function MatchList({ filter = 'hoy' }: MatchListProps) {
         <p className="text-sm mt-1">Los partidos apareceran cuando se sincronicen los datos</p>
       </div>
     )
+  }
+
+  // Agrupar odds extras por match_id para lookup O(1) en el render.
+  type MarketOddsRow = { match_id: string; market_type: string; pick: string; odds: number; point: number | null }
+  const oddsByMatch = new Map<string, Array<Omit<MarketOddsRow, 'match_id'>>>()
+  for (const r of (marketOddsRows ?? []) as MarketOddsRow[]) {
+    const arr = oddsByMatch.get(r.match_id) ?? []
+    arr.push({ market_type: r.market_type, pick: r.pick, odds: Number(r.odds), point: r.point })
+    oddsByMatch.set(r.match_id, arr)
   }
 
   // Pre-calculamos keys de hoy/manana/finsemana (zona Chile) UNA sola vez,
@@ -156,6 +171,7 @@ export async function MatchList({ filter = 'hoy' }: MatchListProps) {
                       <MatchCard
                         key={match.id}
                         match={match}
+                        marketRows={oddsByMatch.get(match.id) ?? []}
                         dist={dist}
                         pool={c?.total}
                       />
