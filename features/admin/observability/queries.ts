@@ -23,27 +23,15 @@ export async function getAlerts(): Promise<AlertItem[]> {
   const admin = createAdminClient()
   const alerts: AlertItem[] = []
 
-  // a) Diff balance vs ledger (signup tx existe → debe ser 0 por user)
-  // LIMIT explicito alto: el default Supabase es 1000 rows. Con +300 users
-  // jugando, credit_transactions crece rapido y sin limit las tx mas recientes
-  // se truncan → falso descuadre. Mismo patron que seed-extra-markets.mjs.
-  const { data: profilesAll } = await admin.from('profiles').select('id, credits').limit(10000)
-  const { data: txAll } = await admin.from('credit_transactions').select('user_id, amount').limit(500000)
-
-  const ledgerByUser = new Map<string, number>()
-  for (const t of txAll ?? []) {
-    ledgerByUser.set(t.user_id, (ledgerByUser.get(t.user_id) ?? 0) + Number(t.amount))
-  }
-  let descuadrados = 0
-  let diffTotal = 0
-  for (const p of profilesAll ?? []) {
-    const ledger = ledgerByUser.get(p.id) ?? 0
-    const diff = Number(p.credits) - ledger
-    if (Math.abs(diff) > 0.01) {
-      descuadrados++
-      diffTotal += diff
-    }
-  }
+  // a) Diff balance vs ledger — usando RPC que hace la agregación en SQL.
+  // Antes hacíamos fetch all + sum en JS, pero el SDK Supabase tiene limit
+  // default de 1000 rows que silenciosamente truncaba credit_transactions
+  // y generaba falsos descuadres cuando habia >1000 tx. La RPC
+  // observability_balance_diffs hace SUM en SQL y devuelve solo los users
+  // con diff > 0.01 — imposible que trunque.
+  const { data: diffs } = await admin.rpc('observability_balance_diffs')
+  const descuadrados = (diffs ?? []).length
+  const diffTotal = (diffs ?? []).reduce((acc: number, d: { diff: number }) => acc + Number(d.diff), 0)
   if (descuadrados > 0) {
     alerts.push({
       severity: 'critical',
@@ -235,27 +223,24 @@ export async function getFinancialMetrics(): Promise<FinancialMetrics> {
   const admin = createAdminClient()
   const dayAgo = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString()
 
-  const [{ data: profiles }, { data: allTx }, { data: tx24h }] = await Promise.all([
-    admin.from('profiles').select('credits').limit(10000),
-    // LIMIT alto: default Supabase 1000 trunca y rompe el sum del ledger.
-    admin.from('credit_transactions').select('amount').limit(500000),
+  // Totales globales y tx by type — via RPCs SQL para evitar el truncamiento
+  // del SDK Supabase (1000 rows default). Las RPCs hacen SUM en SQL y
+  // devuelven solo el resultado agregado.
+  const [{ data: totals }, { data: txByTypeRaw }, { data: tx24h }] = await Promise.all([
+    admin.rpc('observability_financial_totals'),
+    admin.rpc('observability_tx_by_type', { p_hours: 24 }),
     admin.from('credit_transactions').select('user_id, type, amount, profile:profiles!user_id(display_name)').gte('created_at', dayAgo).limit(50000),
   ])
 
-  const totalCredits = (profiles ?? []).reduce((acc, p) => acc + Number(p.credits ?? 0), 0)
-  const totalLedger = (allTx ?? []).reduce((acc, t) => acc + Number(t.amount ?? 0), 0)
+  const totalsRow = totals?.[0] ?? { total_balance: 0, total_ledger: 0, diff: 0 }
+  const totalCredits = Number(totalsRow.total_balance)
+  const totalLedger = Number(totalsRow.total_ledger)
 
-  // Agregar transactions 24h por type
-  const byType = new Map<string, { count: number; total: number }>()
-  for (const t of tx24h ?? []) {
-    const cur = byType.get(t.type) ?? { count: 0, total: 0 }
-    cur.count++
-    cur.total += Number(t.amount)
-    byType.set(t.type, cur)
-  }
-  const txByType = [...byType.entries()]
-    .map(([type, v]) => ({ type, ...v }))
-    .sort((a, b) => Math.abs(b.total) - Math.abs(a.total))
+  const txByType = (txByTypeRaw ?? []).map((r: { tx_type: string; cnt: number; total: number }) => ({
+    type: r.tx_type,
+    count: Number(r.cnt),
+    total: Number(r.total),
+  }))
 
   // Net per user 24h
   type ProfileJoined = { display_name: string } | { display_name: string }[] | null
