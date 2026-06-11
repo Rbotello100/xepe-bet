@@ -6,11 +6,15 @@ interface HeaderProps {
   active?: string
 }
 
+// Predicciones: oculto del UI por decision de producto. La pagina /predictions
+// y todo el feature (predictions table, PredictionForm, OthersPredictions,
+// settlement en sync/scores, scoring de total_points) quedan en el repo por
+// si se reactiva. Para volver a habilitarlo: descomentar la entry de NAV.
 const NAV = [
   { label: 'Partidos', href: '/' },
   { label: 'Fixture', href: '/fixture' },
   { label: 'Ranking', href: '/leaderboard' },
-  { label: 'Predicciones', href: '/predictions' },
+  // { label: 'Predicciones', href: '/predictions' },
   { label: 'Apuestas', href: '/bets' },
   { label: 'Trivia', href: '/trivia' },
   { label: 'Casino', href: '/casino' },
