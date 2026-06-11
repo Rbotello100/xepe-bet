@@ -1,9 +1,13 @@
 import { Header } from '@/components/layout/Header'
 import { requireAuth } from '@/lib/auth'
 import { CasinoTabs } from '@/features/casino/components/CasinoTabs'
+import { canPlayToday } from '@/features/casino/actions'
 
 export default async function CasinoPage() {
   const { profile } = await requireAuth()
+  // Pre-check del giro gratis para que el UI no bloquee al user con balance 0
+  // cuando todavia tiene el spin gratis disponible. El server tambien revalida.
+  const slotsFree = await canPlayToday(profile.id, 'slots')
 
   return (
     <>
@@ -29,7 +33,7 @@ export default async function CasinoPage() {
             <div className="absolute bottom-0 left-0 right-0 h-px bg-gradient-to-r from-transparent via-[var(--accent)]/40 to-transparent" />
           </div>
 
-          <CasinoTabs credits={profile.credits} userId={profile.id} />
+          <CasinoTabs credits={profile.credits} userId={profile.id} slotsFree={slotsFree} />
         </div>
       </div>
     </>

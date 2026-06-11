@@ -69,7 +69,7 @@ function canFireRelatorHook(userId: string): boolean {
   return true
 }
 
-async function canPlayToday(userId: string, gameType: string): Promise<boolean> {
+export async function canPlayToday(userId: string, gameType: string): Promise<boolean> {
   const admin = db()
   const today = new Date().toISOString().split('T')[0]
   const { count } = await admin

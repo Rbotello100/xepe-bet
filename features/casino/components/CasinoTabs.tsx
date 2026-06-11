@@ -23,9 +23,11 @@ const TABS = [
 interface CasinoTabsProps {
   credits: number
   userId: string
+  /** True si el user todavia tiene su giro gratis del dia disponible. */
+  slotsFree?: boolean
 }
 
-export function CasinoTabs({ credits, userId }: CasinoTabsProps) {
+export function CasinoTabs({ credits, userId, slotsFree = false }: CasinoTabsProps) {
   const [activeTab, setActiveTab] = useState<string>('slots')
 
   return (
@@ -49,7 +51,7 @@ export function CasinoTabs({ credits, userId }: CasinoTabsProps) {
       </div>
 
       {/* {activeTab === 'felipe' && <FelipeGame credits={credits} />} */}
-      {activeTab === 'slots' && <SlotsGame credits={credits} />}
+      {activeTab === 'slots' && <SlotsGame credits={credits} freeSpin={slotsFree} />}
       {activeTab === 'mines' && <MinesGame />}
       {activeTab === 'penalty' && <PenaltyGame />}
       {activeTab === 'scratch' && <ScratchGame credits={credits} />}

@@ -187,7 +187,7 @@ interface ResultState {
   isWin: boolean
 }
 
-export function SlotsGame({ credits }: { credits: number }) {
+export function SlotsGame({ credits, freeSpin = false }: { credits: number; freeSpin?: boolean }) {
   const reelsRef = useRef<HTMLDivElement | null>(null)
   const machineRef = useRef<HTMLDivElement | null>(null)
   const fxRef = useRef<HTMLDivElement | null>(null)
@@ -202,6 +202,10 @@ export function SlotsGame({ credits }: { credits: number }) {
   const [spinning, setSpinning] = useState(false)
   const [result, setResult] = useState<ResultState | null>(null)
   const [displayCredits, setDisplayCredits] = useState(credits)
+  // Track local del giro gratis: arranca con el valor del server. Tras consumir
+  // el primer giro pasa a false para que los siguientes checks de balance
+  // funcionen normales.
+  const [hasFreeSpin, setHasFreeSpin] = useState(freeSpin)
 
   const clearAllTimers = () => {
     for (const t of timeoutsRef.current) clearTimeout(t)
@@ -363,7 +367,9 @@ export function SlotsGame({ credits }: { credits: number }) {
 
   const spin = async () => {
     if (spinning) return
-    if (displayCredits < 10) {
+    // Si tiene el giro gratis del dia, dejamos pasar aunque el balance sea < 10.
+    // El server tambien revalida con canPlayToday — defensa en profundidad.
+    if (!hasFreeSpin && displayCredits < 10) {
       setResult({ message: 'Sin fichas suficientes', subtitle: '', isWin: false })
       return
     }
@@ -490,6 +496,10 @@ export function SlotsGame({ credits }: { credits: number }) {
       finishSpin(target, winRows, winSymbols, payout, free)
       spinTimerRef.current = null
     }, maxDur * 1000 + 90)
+
+    // Si este giro fue el gratis, lo consumimos en el cliente para que los
+    // siguientes giros tengan el check de balance normal y muestren "GIRAR $10".
+    if (free) setHasFreeSpin(false)
   }
 
   return (
@@ -526,10 +536,12 @@ export function SlotsGame({ credits }: { credits: number }) {
           disabled={spinning}
           className={`slots-btn ${spinning ? 'is-spinning' : ''}`}
         >
-          {spinning ? 'GIRANDO…' : 'GIRAR ($10)'}
+          {spinning ? 'GIRANDO…' : hasFreeSpin ? 'GIRAR (GRATIS)' : 'GIRAR ($10)'}
         </button>
         <p className="text-xs text-subtle">
-          1 giro gratis al día · Balance actual: <span className="font-mono text-accent-deep">${displayCredits.toLocaleString('es-CL')}</span>
+          {hasFreeSpin ? 'Tu giro gratis del día está disponible' : '1 giro gratis al día'}
+          {' · Balance actual: '}
+          <span className="font-mono text-accent-deep">${displayCredits.toLocaleString('es-CL')}</span>
         </p>
       </div>
 
