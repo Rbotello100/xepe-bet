@@ -1,5 +1,5 @@
 // --- Credits & Betting ---
-export const INITIAL_CREDITS = 1000
+export const INITIAL_CREDITS = 5000
 export const MIN_BET = 10
 export const MAX_BET = 500
 

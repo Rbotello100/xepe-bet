@@ -44,7 +44,7 @@ const sb = createClient(SUPABASE_URL, SERVICE_KEY, { auth: { autoRefreshToken: f
 const TEAM_HOME = '04d4c3b9-ccfc-4147-badc-29430d4eb4eb'  // Mexico
 const TEAM_AWAY = 'b188ff20-c37a-4d4b-8c73-5e16972f006f' // South Africa
 const TEST_PREFIX = `smoke-${Date.now()}`
-const INITIAL_CREDITS = 1000
+const INITIAL_CREDITS = 5000
 
 // --- ASSERT HELPER
 function assert(cond, msg) {

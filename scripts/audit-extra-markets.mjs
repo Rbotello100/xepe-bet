@@ -22,7 +22,7 @@ const sb = createClient(env.NEXT_PUBLIC_SUPABASE_URL, env.SUPABASE_SERVICE_ROLE_
 const TEAM_HOME = '04d4c3b9-ccfc-4147-badc-29430d4eb4eb'  // Mexico
 const TEAM_AWAY = 'b188ff20-c37a-4d4b-8c73-5e16972f006f'  // South Africa
 const TEST_PREFIX = `audit-${Date.now()}`
-const INITIAL = 1000  // signup default
+const INITIAL = 5000  // signup default
 
 function assert(cond, msg) { if (!cond) throw new Error(`ASSERT FAILED: ${msg}`) }
 function assertEq(a, b, msg) { if (a !== b) throw new Error(`ASSERT FAILED: ${msg}\n  expected: ${b}\n  actual:   ${a}`) }
