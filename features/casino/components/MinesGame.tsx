@@ -17,7 +17,12 @@ const MINE_LEVELS = [
 
 type Phase = 'idle' | 'playing' | 'busted' | 'cashed_out'
 
-export function MinesGame() {
+interface MinesGameProps {
+  freeStart?: boolean
+  userCredits?: number
+}
+
+export function MinesGame({ freeStart = false, userCredits = 0 }: MinesGameProps) {
   const [phase, setPhase]               = useState<Phase>('idle')
   const [sessionId, setSessionId]       = useState<string | null>(null)
   const [mineCount, setMineCount]       = useState<number>(3)
@@ -29,10 +34,14 @@ export function MinesGame() {
   const [payout, setPayout]             = useState(0)
   const [isFree, setIsFree]             = useState(false)
   const [loading, setLoading]           = useState(false)
+  const [errorMsg, setErrorMsg]         = useState<string | null>(null)
+  // Local: tras consumir la primera partida del dia, este flag pasa a false.
+  const [hasFreeStart, setHasFreeStart] = useState(freeStart)
 
   const reset = () => {
     setPhase('idle'); setSessionId(null); setRevealed(new Set()); setMines(new Set())
     setBustedCell(null); setMultiplier(1); setNextMult(0); setPayout(0); setIsFree(false)
+    setErrorMsg(null)
   }
 
   // try/finally en cada handler: garantiza setLoading(false) aunque la
@@ -40,18 +49,27 @@ export function MinesGame() {
   // pegado en estado "loading" para siempre.
   const handleStart = async (mines: number) => {
     setLoading(true)
+    setErrorMsg(null)
     setMineCount(mines)
     try {
       const res = await startMines(mines)
-      if ('error' in res && res.error) return
+      if ('error' in res && res.error) {
+        // Antes el error era silencioso — el user clickeaba "Fácil" y nada
+        // pasaba. Ahora mostramos el mensaje (ej. "Creditos insuficientes").
+        setErrorMsg(res.error)
+        return
+      }
       setSessionId(res.sessionId ?? null)
       setRevealed(new Set())
       setMines(new Set())
       setBustedCell(null)
       setMultiplier(1)
       setPhase('playing')
+      // Consumir el gratis local si server marca la sesion como free.
+      if ('free' in res && res.free) setHasFreeStart(false)
     } catch (err) {
       console.error('[MinesGame] startMines failed', err)
+      setErrorMsg('Error inesperado, reintentá')
     } finally {
       setLoading(false)
     }
@@ -143,7 +161,16 @@ export function MinesGame() {
           ))}
         </div>
 
-        <p className="text-xs text-slate-500">Costo: ${COST} · 1 gratis al día</p>
+        {errorMsg && (
+          <p className="mx-auto max-w-xs rounded-lg border border-red-500/40 bg-red-500/10 px-3 py-2 text-xs text-red-300">
+            {errorMsg}
+          </p>
+        )}
+        <p className="text-xs text-slate-500">
+          {hasFreeStart
+            ? <><span className="text-[var(--accent)] font-semibold">Tu partida gratis del día está disponible</span> · Costo despues: ${COST}</>
+            : <>Costo: ${COST} · Ya usaste el gratis hoy · Balance: ${userCredits.toLocaleString('es-CL')}</>}
+        </p>
       </Card>
     )
   }

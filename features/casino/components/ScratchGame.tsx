@@ -6,16 +6,24 @@ import { Button } from '@/components/ui/Button'
 import { Card } from '@/components/ui/Card'
 import { clsx } from 'clsx'
 
-export function ScratchGame({ credits }: { credits: number }) {
+interface ScratchGameProps {
+  credits: number
+  freeCard?: boolean
+}
+
+export function ScratchGame({ credits, freeCard = false }: ScratchGameProps) {
   const [sessionId, setSessionId] = useState<string | null>(null)
   const [cells, setCells] = useState<string[] | null>(null)
   const [revealed, setRevealed] = useState<boolean[]>(Array(9).fill(false))
   const [revealCount, setRevealCount] = useState(0)
   const [loading, setLoading] = useState(false)
   const [result, setResult] = useState<{ payout: number } | null>(null)
+  const [errorMsg, setErrorMsg] = useState<string | null>(null)
+  const [hasFreeCard, setHasFreeCard] = useState(freeCard)
 
   const startGame = async () => {
     setLoading(true)
+    setErrorMsg(null)
     setResult(null)
     setRevealed(Array(9).fill(false))
     setRevealCount(0)
@@ -23,11 +31,16 @@ export function ScratchGame({ credits }: { credits: number }) {
 
     try {
       const res = await playScratchCard()
-      if ('error' in res && res.error) return
+      if ('error' in res && res.error) {
+        setErrorMsg(res.error)
+        return
+      }
       setCells(res.cells ?? null)
       setSessionId(res.sessionId ?? null)
+      if ('free' in res && res.free) setHasFreeCard(false)
     } catch (err) {
       console.error('[ScratchGame] playScratchCard failed', err)
+      setErrorMsg('Error inesperado, reintentá')
     } finally {
       setLoading(false)
     }
@@ -90,9 +103,18 @@ export function ScratchGame({ credits }: { credits: number }) {
         </div>
 
         <Button onClick={startGame} disabled={loading} size="lg">
-          {loading ? 'Generando...' : 'Obtener tarjeta ($15)'}
+          {loading ? 'Generando...' : hasFreeCard ? 'Obtener tarjeta (GRATIS)' : 'Obtener tarjeta ($15)'}
         </Button>
-        <p className="text-xs text-slate-500">1 tarjeta gratis al dia</p>
+        {errorMsg && (
+          <p className="mx-auto max-w-xs rounded-lg border border-red-500/40 bg-red-500/10 px-3 py-2 text-xs text-red-300">
+            {errorMsg}
+          </p>
+        )}
+        <p className="text-xs text-slate-500">
+          {hasFreeCard
+            ? <><span className="text-[var(--accent)] font-semibold">Tu tarjeta gratis del día está disponible</span></>
+            : <>1 tarjeta gratis al dia · Ya usaste el gratis · Balance: ${credits.toLocaleString('es-CL')}</>}
+        </p>
       </Card>
     )
   }

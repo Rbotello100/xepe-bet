@@ -52,7 +52,12 @@ function MultiplierLadder({ goalsScored, currentBet }: { goalsScored: number; cu
   )
 }
 
-export function PenaltyGame() {
+interface PenaltyGameProps {
+  freeStart?: boolean
+  userCredits?: number
+}
+
+export function PenaltyGame({ freeStart = false, userCredits = 0 }: PenaltyGameProps) {
   const [phase, setPhase]               = useState<Phase>('idle')
   const [sessionId, setSessionId]       = useState<string | null>(null)
   const [goalsScored, setGoalsScored]   = useState(0)
@@ -64,6 +69,8 @@ export function PenaltyGame() {
   const [payout, setPayout]             = useState(0)
   const [isFree, setIsFree]             = useState(false)
   const [loading, setLoading]           = useState(false)
+  const [errorMsg, setErrorMsg]         = useState<string | null>(null)
+  const [hasFreeStart, setHasFreeStart] = useState(freeStart)
 
   // Tracking de timeouts para evitar leaks/loading colgado: si el componente
   // unmounta o el user reinicia, cancelamos los setTimeout de la coreografia
@@ -86,20 +93,27 @@ export function PenaltyGame() {
     setLoading(false)
     setPhase('idle'); setSessionId(null); setGoalsScored(0); setKickedZone(null); setCovered([])
     setIsGoal(null); setMultiplier(0); setNextProb(0.583); setPayout(0); setIsFree(false)
+    setErrorMsg(null)
   }
 
   // try/catch en cada handler: garantiza que setLoading vuelva a false
   // aunque la server action throwee — sin esto el UI quedaba pegado.
   const handleStart = async () => {
     setLoading(true)
+    setErrorMsg(null)
     try {
       const res = await startPenaltyGame(BET)
-      if ('error' in res && res.error) return
+      if ('error' in res && res.error) {
+        setErrorMsg(res.error)
+        return
+      }
       setSessionId(res.sessionId ?? null)
       setNextProb(res.firstProb ?? 0.583)
       setPhase('kicking')
+      if ('free' in res && res.free) setHasFreeStart(false)
     } catch (err) {
       console.error('[PenaltyGame] startPenaltyGame failed', err)
+      setErrorMsg('Error inesperado, reintentá')
     } finally {
       setLoading(false)
     }
@@ -218,9 +232,18 @@ export function PenaltyGame() {
           </div>
         </div>
 
-        <p className="text-xs text-slate-500">Costo: ${BET} · 1 gratis al dia</p>
+        {errorMsg && (
+          <p className="mx-auto max-w-xs rounded-lg border border-red-500/40 bg-red-500/10 px-3 py-2 text-xs text-red-300">
+            {errorMsg}
+          </p>
+        )}
+        <p className="text-xs text-slate-500">
+          {hasFreeStart
+            ? <><span className="text-[var(--accent)] font-semibold">Tu partida gratis del día está disponible</span> · Costo despues: ${BET}</>
+            : <>Costo: ${BET} · Ya usaste el gratis hoy · Balance: ${userCredits.toLocaleString('es-CL')}</>}
+        </p>
         <Button onClick={handleStart} disabled={loading} size="lg">
-          {loading ? 'Iniciando...' : `Jugar ($${BET})`}
+          {loading ? 'Iniciando...' : hasFreeStart ? 'Jugar (GRATIS)' : `Jugar ($${BET})`}
         </Button>
       </Card>
     )

@@ -23,11 +23,17 @@ const TABS = [
 interface CasinoTabsProps {
   credits: number
   userId: string
-  /** True si el user todavia tiene su giro gratis del dia disponible. */
+  /** Estado del gratis del dia por juego (calculado server-side en page.tsx). */
   slotsFree?: boolean
+  minesFree?: boolean
+  penaltyFree?: boolean
+  scratchFree?: boolean
 }
 
-export function CasinoTabs({ credits, userId, slotsFree = false }: CasinoTabsProps) {
+export function CasinoTabs({
+  credits, userId,
+  slotsFree = false, minesFree = false, penaltyFree = false, scratchFree = false,
+}: CasinoTabsProps) {
   const [activeTab, setActiveTab] = useState<string>('slots')
 
   return (
@@ -52,9 +58,9 @@ export function CasinoTabs({ credits, userId, slotsFree = false }: CasinoTabsPro
 
       {/* {activeTab === 'felipe' && <FelipeGame credits={credits} />} */}
       {activeTab === 'slots' && <SlotsGame credits={credits} freeSpin={slotsFree} />}
-      {activeTab === 'mines' && <MinesGame />}
-      {activeTab === 'penalty' && <PenaltyGame />}
-      {activeTab === 'scratch' && <ScratchGame credits={credits} />}
+      {activeTab === 'mines' && <MinesGame freeStart={minesFree} userCredits={credits} />}
+      {activeTab === 'penalty' && <PenaltyGame freeStart={penaltyFree} userCredits={credits} />}
+      {activeTab === 'scratch' && <ScratchGame credits={credits} freeCard={scratchFree} />}
     </div>
   )
 }

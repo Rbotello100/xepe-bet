@@ -5,9 +5,15 @@ import { canPlayToday } from '@/features/casino/actions'
 
 export default async function CasinoPage() {
   const { profile } = await requireAuth()
-  // Pre-check del giro gratis para que el UI no bloquee al user con balance 0
-  // cuando todavia tiene el spin gratis disponible. El server tambien revalida.
-  const slotsFree = await canPlayToday(profile.id, 'slots')
+  // Pre-check del gratis del dia para cada juego — el UI lo muestra y evita
+  // bloquear al user con balance 0 si todavia tiene el bonus. El server
+  // tambien revalida en cada game start.
+  const [slotsFree, minesFree, penaltyFree, scratchFree] = await Promise.all([
+    canPlayToday(profile.id, 'slots'),
+    canPlayToday(profile.id, 'minas'),
+    canPlayToday(profile.id, 'penales'),
+    canPlayToday(profile.id, 'rasca'),
+  ])
 
   return (
     <>
@@ -33,7 +39,14 @@ export default async function CasinoPage() {
             <div className="absolute bottom-0 left-0 right-0 h-px bg-gradient-to-r from-transparent via-[var(--accent)]/40 to-transparent" />
           </div>
 
-          <CasinoTabs credits={profile.credits} userId={profile.id} slotsFree={slotsFree} />
+          <CasinoTabs
+            credits={profile.credits}
+            userId={profile.id}
+            slotsFree={slotsFree}
+            minesFree={minesFree}
+            penaltyFree={penaltyFree}
+            scratchFree={scratchFree}
+          />
         </div>
       </div>
     </>
