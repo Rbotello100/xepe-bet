@@ -24,8 +24,11 @@ export async function getAlerts(): Promise<AlertItem[]> {
   const alerts: AlertItem[] = []
 
   // a) Diff balance vs ledger (signup tx existe → debe ser 0 por user)
-  const { data: profilesAll } = await admin.from('profiles').select('id, credits')
-  const { data: txAll } = await admin.from('credit_transactions').select('user_id, amount')
+  // LIMIT explicito alto: el default Supabase es 1000 rows. Con +300 users
+  // jugando, credit_transactions crece rapido y sin limit las tx mas recientes
+  // se truncan → falso descuadre. Mismo patron que seed-extra-markets.mjs.
+  const { data: profilesAll } = await admin.from('profiles').select('id, credits').limit(10000)
+  const { data: txAll } = await admin.from('credit_transactions').select('user_id, amount').limit(500000)
 
   const ledgerByUser = new Map<string, number>()
   for (const t of txAll ?? []) {
@@ -195,8 +198,8 @@ export async function getOpsMetrics(): Promise<OpsMetrics> {
     admin.from('predictions').select('id', { count: 'exact', head: true }).gte('created_at', dayAgo),
     admin.from('trivia_sessions').select('id', { count: 'exact', head: true }).gte('created_at', dayAgo),
     admin.from('casino_sessions').select('id', { count: 'exact', head: true }).gte('created_at', dayAgo),
-    admin.from('bets').select('user_id').gte('created_at', dayAgo),
-    admin.from('casino_sessions').select('user_id').gte('created_at', dayAgo),
+    admin.from('bets').select('user_id').gte('created_at', dayAgo).limit(50000),
+    admin.from('casino_sessions').select('user_id').gte('created_at', dayAgo).limit(50000),
   ])
 
   const activeSet = new Set<string>()
@@ -233,9 +236,10 @@ export async function getFinancialMetrics(): Promise<FinancialMetrics> {
   const dayAgo = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString()
 
   const [{ data: profiles }, { data: allTx }, { data: tx24h }] = await Promise.all([
-    admin.from('profiles').select('credits'),
-    admin.from('credit_transactions').select('amount'),
-    admin.from('credit_transactions').select('user_id, type, amount, profile:profiles!user_id(display_name)').gte('created_at', dayAgo),
+    admin.from('profiles').select('credits').limit(10000),
+    // LIMIT alto: default Supabase 1000 trunca y rompe el sum del ledger.
+    admin.from('credit_transactions').select('amount').limit(500000),
+    admin.from('credit_transactions').select('user_id, type, amount, profile:profiles!user_id(display_name)').gte('created_at', dayAgo).limit(50000),
   ])
 
   const totalCredits = (profiles ?? []).reduce((acc, p) => acc + Number(p.credits ?? 0), 0)
