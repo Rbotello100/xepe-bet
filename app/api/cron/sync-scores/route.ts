@@ -2,6 +2,10 @@ import { NextResponse } from 'next/server'
 import { syncFinishedScores } from '@/lib/sync/scores'
 import { verifyCronAuth } from '@/lib/auth/cron'
 
+// 60s para cubrir multiples sports + N matches pending + autoResolveMatch en
+// paralelo (settlement + addCredits). Default de Vercel es 10s y se queda corto.
+export const maxDuration = 60
+
 async function handler(request: Request) {
   const unauthorized = verifyCronAuth(request)
   if (unauthorized) return unauthorized

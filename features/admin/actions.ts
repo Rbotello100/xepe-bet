@@ -73,11 +73,13 @@ export async function resolveMatch(matchId: string, homeScore: number, awayScore
     }).eq('id', pred.id).is('is_correct', null).select('id').maybeSingle()
 
     if (updatedPred && points > 0) {
-      const { data: userProfile } = await admin.from('profiles').select('total_points').eq('id', pred.user_id).single()
-      if (userProfile) {
-        await admin.from('profiles').update({
-          total_points: (userProfile.total_points ?? 0) + points,
-        }).eq('id', pred.user_id)
+      // Usa RPC atomica add_points (UPDATE ... SET total_points = total_points + N)
+      // en vez de SELECT+UPDATE. Postgres serializa la escritura, evita la race
+      // si 2 matches del mismo user resuelven concurrentes. Mismo patron que
+      // lib/sync/scores.ts. RPC creada en migration 20260604000001.
+      const { error: addErr } = await admin.rpc('add_points', { p_user_id: pred.user_id, p_amount: points })
+      if (addErr) {
+        await logError('admin.resolveMatch.addPoints', addErr, { userId: pred.user_id, points, matchId }, 'error')
       }
     }
   }

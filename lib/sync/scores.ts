@@ -3,6 +3,7 @@ import { createAdminClient } from '@/lib/supabase/admin'
 import { addCredits } from '@/lib/credits'
 import { SCORE_SYNC_WINDOW_DAYS, type BetPick } from '@/lib/constants'
 import { getMatchesNeedingScoreSync } from './scheduler'
+import { normalizeTeamName } from './discover'
 import { logOddsApiUsage, type UsageTrigger } from '@/lib/odds-api/usage'
 import { logError } from '@/lib/log/error'
 import { evaluatePick, type Winner } from '@/lib/utils/pick'
@@ -16,7 +17,7 @@ interface PendingBetRow {
   id: string
   user_id: string
   pick: BetPick
-  market_type: BetMarket
+  market_type: BetMarket | null
   amount: number
   odds_at_placement: number
   potential_payout: number
@@ -34,7 +35,7 @@ interface PendingParlayLegRow {
   id: string
   parlay_id: string
   pick: BetPick
-  market_type: BetMarket
+  market_type: BetMarket | null
 }
 
 /**
@@ -188,13 +189,21 @@ export async function syncFinishedScores(triggeredBy: UsageTrigger = 'cron') {
 /**
  * /scores no garantiza orden (home puede venir en scores[0] o scores[1]), asi que
  * matcheamos por name contra event.home_team / away_team.
+ *
+ * Usamos normalizeTeamName (lowercase + strip accents + alphanumeric) para
+ * matchear "Türkiye" ↔ "Turkey", "Côte d'Ivoire" ↔ "Cote d'Ivoire" y otros
+ * casos donde la API y la BD divergen en encoding. Sin esto, los matches
+ * de esos paises nunca se auto-resuelven.
+ *
  * Retorna null si no encuentra ambos scores (caller incrementa attempts, no resuelve).
  */
 function parseScoresByTeamName(event: OddsScoreEvent): { home: number; away: number } | null {
   if (!event.scores) return null
 
-  const home = event.scores.find(s => s.name === event.home_team)
-  const away = event.scores.find(s => s.name === event.away_team)
+  const targetHome = normalizeTeamName(event.home_team)
+  const targetAway = normalizeTeamName(event.away_team)
+  const home = event.scores.find(s => normalizeTeamName(s.name) === targetHome)
+  const away = event.scores.find(s => normalizeTeamName(s.name) === targetAway)
 
   if (!home || !away) return null
 
@@ -282,7 +291,16 @@ export async function autoResolveMatch(matchId: string, homeScore: number, awayS
     // evaluatePick ramifica por market_type. Para 1X2 mantiene comportamiento
     // viejo. Para btts/totals/double_chance/dnb agrega settlement correcto.
     // 'void' (solo en Draw No Bet con empate) -> bet cancelled + refund stake.
-    const outcome = evaluatePick(bet.market_type, bet.pick, homeScore, awayScore)
+    // Guard: si market_type es null (bet legacy pre-mercados-extra), tratamos
+    // como '1x2' que es el unico mercado que existia antes. Loguear para
+    // detectar el patron en prod.
+    const market = bet.market_type ?? '1x2'
+    if (!bet.market_type) {
+      void logError('sync.autoResolveMatch.missingMarket', null, {
+        betId: bet.id, pick: bet.pick, matchId,
+      }, 'warn')
+    }
+    const outcome = evaluatePick(market, bet.pick, homeScore, awayScore)
     const nextStatus = outcome === 'won' ? 'won' : outcome === 'void' ? 'cancelled' : 'lost'
 
     const { data: updatedBet } = await admin
@@ -339,7 +357,14 @@ export async function autoResolveMatch(matchId: string, homeScore: number, awayS
     // Si una leg sale 'void' (DNB con empate), tratamos como 'void' status
     // de la leg — el agregado del parlay ya maneja void (lo recalcula como
     // si la leg fuera neutral, mismo patron que cuando un match se cancela).
-    const outcome = evaluatePick(leg.market_type, leg.pick, homeScore, awayScore)
+    // Guard market_type null igual que en bets.
+    const legMarket = leg.market_type ?? '1x2'
+    if (!leg.market_type) {
+      void logError('sync.autoResolveMatch.missingMarketLeg', null, {
+        legId: leg.id, parlayId: leg.parlay_id, pick: leg.pick, matchId,
+      }, 'warn')
+    }
+    const outcome = evaluatePick(legMarket, leg.pick, homeScore, awayScore)
     const nextLegStatus = outcome === 'won' ? 'won' : outcome === 'void' ? 'void' : 'lost'
     await admin.from('parlay_legs').update({ status: nextLegStatus }).eq('id', leg.id).eq('status', 'pending')
 

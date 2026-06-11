@@ -151,7 +151,7 @@ export async function discoverAllSports(
  *
  * Permite matchear "Bosnia & Herzegovina" ↔ "Bosnia Herzegovina" ↔ "bosniaherzegovina".
  */
-function normalizeTeamName(name: string): string {
+export function normalizeTeamName(name: string): string {
   return name
     .toLowerCase()
     .normalize('NFD')

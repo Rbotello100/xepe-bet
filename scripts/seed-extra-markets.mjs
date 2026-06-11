@@ -114,8 +114,12 @@ async function main() {
     .order('starts_at')
 
   // 2) Sacar IDs que ya tienen rows en match_market_odds (idempotencia)
+  // LIMIT explicito alto: default Supabase es 1000. Con eliminatorias del Mundial
+  // 2026 vamos a tener ~1300 rows. Sin limit el script reprocesaria partidos ya
+  // hechos y gastaria creditos.
   const { data: already } = await sb.from('match_market_odds')
     .select('match_id')
+    .limit(50000)
   const alreadySet = new Set((already ?? []).map(r => r.match_id))
 
   const pending = (synced ?? []).filter(m => !alreadySet.has(m.id))

@@ -106,6 +106,7 @@ export function BetslipSidebar() {
 
           <input
             type="number"
+            inputMode="decimal"
             min={MIN_BET}
             max={MAX_BET}
             value={amount}

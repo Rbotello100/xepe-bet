@@ -1,13 +1,14 @@
-import { calculateDerivedMarkets } from './derived-odds'
 import { createAdminClient } from '@/lib/supabase/admin'
 import type { BetMarket, BetPick } from '@/lib/constants'
 
 /**
- * Dado un match con sus odds 1X2 y un pick (home/away/draw/derivado), retorna
- * las odds que el server considera correctas para ese pick. Usar server-side
- * para validar que el cliente no envio odds infladas.
+ * Dado un match con sus odds 1X2 y un pick (home/away/draw), retorna las odds
+ * que el server considera correctas para ese pick. Usar server-side para
+ * validar que el cliente no envio odds infladas.
  *
- * Retorna null si las odds base faltan o el pick no es reconocible.
+ * Solo handlea picks 1X2. Mercados extra van por resolveServerOddsExtended
+ * que lee de match_market_odds. Retorna null si las odds base faltan o el
+ * pick no es 1X2.
  */
 export function resolveServerOdds(
   match: { odds_home: number | null; odds_draw: number | null; odds_away: number | null },
@@ -16,17 +17,9 @@ export function resolveServerOdds(
   const { odds_home, odds_draw, odds_away } = match
   if (!odds_home || !odds_draw || !odds_away) return null
 
-  // 1X2 directo
   if (pick === 'home' || pick === '1') return odds_home
   if (pick === 'draw' || pick === 'X') return odds_draw
   if (pick === 'away' || pick === '2') return odds_away
-
-  // Derivados calculados
-  const markets = calculateDerivedMarkets(odds_home, odds_draw, odds_away)
-  for (const market of markets) {
-    const option = market.options.find(o => o.pick === pick)
-    if (option) return option.odds
-  }
 
   return null
 }
@@ -55,12 +48,12 @@ export function oddsWithinTolerance(clientOdds: number, serverOdds: number, tole
  *  - Si market_type es otro -> consulta match_market_odds donde se guardo el
  *    valor real sincronizado por el cron.
  *
- * Esto reemplaza a la calculacion derivada del cliente (que se usaba como
- * proxy hasta que tuvimos el sync de mercados extra). Las odds derivadas
- * eran aproximadas; las de match_market_odds vienen DIRECTO de Pinnacle/
- * William Hill segun cual ofrezca el mercado.
- *
- * Retorna null si no encontramos odds — el caller debe rechazar la apuesta.
+ * Si no encontramos la row (cron no corrio aun, partido recien descubierto,
+ * etc.), retornamos null y el caller rechaza la apuesta con "Odds no
+ * disponibles". Antes tenia un fallback a calculateDerivedMarkets pero esa
+ * estimacion tenia gap 5-15% vs odds reales — riesgo de subvaluacion (pagar
+ * mas) o falsos rechazos por oddsWithinTolerance. Mejor pedirle al user que
+ * recargue cuando el sync siguiente complete.
  */
 export async function resolveServerOddsExtended(
   matchId: string,
@@ -73,7 +66,7 @@ export async function resolveServerOddsExtended(
     return resolveServerOdds(fallbackMatch, pick)
   }
 
-  // Mercados extra: lee de match_market_odds
+  // Mercados extra: SOLO match_market_odds. No fallback derivado.
   const admin = createAdminClient()
   const { data } = await admin
     .from('match_market_odds')
@@ -83,18 +76,5 @@ export async function resolveServerOddsExtended(
     .eq('pick', pick)
     .maybeSingle()
 
-  if (data?.odds) return Number(data.odds)
-
-  // Fallback: si por algun motivo no tenemos la row (cron no corrio aun),
-  // intentamos derivar de los 1X2 si tenemos los datos del match. Es menos
-  // preciso pero permite que el user pueda apostar igual.
-  if (fallbackMatch && fallbackMatch.odds_home && fallbackMatch.odds_draw && fallbackMatch.odds_away) {
-    const markets = calculateDerivedMarkets(fallbackMatch.odds_home, fallbackMatch.odds_draw, fallbackMatch.odds_away)
-    for (const m of markets) {
-      const opt = m.options.find(o => o.pick === pick)
-      if (opt) return opt.odds
-    }
-  }
-
-  return null
+  return data?.odds ? Number(data.odds) : null
 }

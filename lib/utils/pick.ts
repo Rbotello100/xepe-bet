@@ -97,5 +97,12 @@ export function evaluatePick(
       }
       return 'lost'
     }
+
+    default:
+      // Safety net: market_type fuera de BetMarket (data corrupta, legacy). TS
+      // garantiza que no entre aca via union exhaustiva, pero si pasa en runtime
+      // tratamos como 'lost' para no dejar bets en estado pending para siempre.
+      // El caller debe validar isValidMarket() antes y loguear con contexto.
+      return 'lost'
   }
 }

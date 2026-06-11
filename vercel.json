@@ -3,11 +3,11 @@
   "crons": [
     {
       "path": "/api/cron/sync-odds",
-      "schedule": "0 12 * * *"
+      "schedule": "0 13 * * *"
     },
     {
       "path": "/api/cron/sync-scores",
-      "schedule": "0 13 * * *"
+      "schedule": "10 13 * * *"
     },
     {
       "path": "/api/cron/generate-feed",

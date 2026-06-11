@@ -16,8 +16,6 @@ interface MatchCardProps {
   dist?: [number, number, number]
   /** Count real de bets pending del match. Omitir si 0. */
   pool?: number
-  /** Auto-expandir al mount (cuando llega via ?expand=<id>). */
-  defaultExpanded?: boolean
 }
 
 function PickBar({ dist }: { dist: [number, number, number] }) {
@@ -34,13 +32,13 @@ function PickBar({ dist }: { dist: [number, number, number] }) {
   )
 }
 
-export function MatchCard({ match, marketRows = [], dist, pool, defaultExpanded = false }: MatchCardProps) {
+export function MatchCard({ match, marketRows = [], dist, pool }: MatchCardProps) {
   const isFinished = match.status === 'finished'
   const isLive = match.status === 'live'
   const lockCutoff = new Date(new Date(match.starts_at).getTime() - BET_LOCK_HOURS * 60 * 60 * 1000)
   const isLocked = new Date() >= lockCutoff
   const canBet = !isFinished && !isLocked && match.odds_home
-  const [expanded, setExpanded] = useState(defaultExpanded)
+  const [expanded, setExpanded] = useState(false)
 
   const toggle = () => { if (canBet) setExpanded(e => !e) }
 

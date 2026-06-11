@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback, useMemo } from 'react'
 import { useUser } from './useUser'
+import { logClientError } from '@/lib/log/client-error-action'
 
 export interface ParlayLeg {
   matchId: string
@@ -65,6 +66,15 @@ function readStorage(key: string): ParlayLeg[] {
     // futuras lecturas no paguen el costo del filter ni vuelvan a fallar.
     if (valid.length !== raw.length) {
       try { localStorage.setItem(key, JSON.stringify(valid)) } catch { /* ignore */ }
+      // Log fire-and-forget. Solo count, NUNCA contenido de los legs ni
+      // userId/email — logClientError ya captura userId server-side desde la
+      // session si es necesario para debugging.
+      const dropped = raw.length - valid.length
+      void logClientError({
+        section: 'parlay-cleanup',
+        message: `Cleanup de ${dropped}/${raw.length} legs corruptos`,
+        pathname: typeof window !== 'undefined' ? window.location.pathname : undefined,
+      }).catch(() => {})
     }
     return valid
   } catch {

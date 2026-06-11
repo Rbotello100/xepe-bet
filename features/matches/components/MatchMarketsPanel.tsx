@@ -1,6 +1,6 @@
 'use client'
 
-import { useMemo, useState } from 'react'
+import { useMemo, useRef, useState } from 'react'
 import { toast } from 'sonner'
 import { useParlay, type ParlayLeg } from '@/hooks/useParlay'
 import { placeBet } from '@/features/bets/actions'
@@ -115,6 +115,10 @@ export function MatchMarketsPanel({ match, marketRows }: Props) {
   const { legs, addLeg, removeLeg } = useParlay()
   const numAmount = parseFloat(amount) || 0
   const currentTab = tabs.find(t => t.market_type === activeMarket)
+  // Guard contra double-click rapido en mobile. setSubmitting es async (batch
+  // de React) y el primer click no llega a desactivar el boton antes del segundo.
+  // useRef es sincrono y bloquea inmediato la segunda invocacion.
+  const processingRef = useRef(false)
 
   if (tabs.length === 0) {
     return (
@@ -130,26 +134,34 @@ export function MatchMarketsPanel({ match, marketRows }: Props) {
 
   const handleBetNow = async () => {
     if (!selectedPick || numAmount < MIN_BET || numAmount > MAX_BET) return
+    if (processingRef.current) return
+    processingRef.current = true
     setSubmitting('bet')
-    const result = await placeBet({
-      match_id: match.id,
-      market_type: activeMarket,
-      pick: selectedPick.pick,
-      odds: selectedPick.odds,
-      amount: numAmount,
-    })
-    if (result.error) {
-      toast.error(result.error)
-    } else {
-      toast.success(`Apuesta creada — premio potencial ${formatCredits(result.potential_payout ?? 0)}`)
-      setSelectedPick(null)
-      setAmount('')
+    try {
+      const result = await placeBet({
+        match_id: match.id,
+        market_type: activeMarket,
+        pick: selectedPick.pick,
+        odds: selectedPick.odds,
+        amount: numAmount,
+      })
+      if (result.error) {
+        toast.error(result.error)
+      } else {
+        toast.success(`Apuesta creada — premio potencial ${formatCredits(result.potential_payout ?? 0)}`)
+        setSelectedPick(null)
+        setAmount('')
+      }
+    } finally {
+      setSubmitting(null)
+      processingRef.current = false
     }
-    setSubmitting(null)
   }
 
   const handleAddToParlay = () => {
     if (!selectedPick) return
+    if (processingRef.current) return
+    processingRef.current = true
     setSubmitting('parlay')
     // Sobreescribir leg viejo del match (regla user: 1 pick por matchId)
     removeLeg(match.id)
@@ -166,6 +178,7 @@ export function MatchMarketsPanel({ match, marketRows }: Props) {
       toast.success('Agregado al parlay')
       setSelectedPick(null)
       setSubmitting(null)
+      processingRef.current = false
     })
   }
 
@@ -173,14 +186,14 @@ export function MatchMarketsPanel({ match, marketRows }: Props) {
 
   return (
     <div className="mt-3 space-y-3" onClick={(e) => e.stopPropagation()}>
-      {/* Tabs de mercado */}
-      <div className="flex flex-wrap gap-1.5 rounded-md border border-card-border bg-sunken p-1.5">
+      {/* Tabs de mercado — scroll horizontal en mobile (7 tabs no caben a 375px) */}
+      <div className="flex flex-nowrap gap-1.5 overflow-x-auto rounded-md border border-card-border bg-sunken p-1.5 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
         {tabs.map(t => (
           <button
             key={t.market_type}
             type="button"
             onClick={() => { setActiveMarket(t.market_type); setSelectedPick(null) }}
-            className={`flex-1 min-w-[80px] rounded px-2.5 py-1.5 text-[11px] font-semibold transition-colors ${
+            className={`whitespace-nowrap shrink-0 rounded px-2.5 py-1.5 text-[11px] font-semibold transition-colors ${
               activeMarket === t.market_type
                 ? 'bg-accent text-background shadow-[0_2px_8px_color-mix(in_oklab,var(--color-accent)_35%,transparent)]'
                 : 'text-muted hover:bg-card hover:text-foreground'
@@ -191,9 +204,9 @@ export function MatchMarketsPanel({ match, marketRows }: Props) {
         ))}
       </div>
 
-      {/* Picks del mercado activo */}
+      {/* Picks del mercado activo — 2 cols en mobile (labels largos), 3 en sm+ cuando hay 3 picks */}
       {currentTab && (
-        <div className={`grid gap-2 ${currentTab.picks.length === 2 ? 'grid-cols-2' : 'grid-cols-3'}`}>
+        <div className={`grid gap-2 ${currentTab.picks.length === 2 ? 'grid-cols-2' : 'grid-cols-2 sm:grid-cols-3'}`}>
           {currentTab.picks.map(p => {
             const on = selectedPick?.pick === p.pick
             return (
@@ -201,13 +214,13 @@ export function MatchMarketsPanel({ match, marketRows }: Props) {
                 key={p.pick}
                 type="button"
                 onClick={() => handleSelect(p.pick, p.label, p.odds)}
-                className={`flex flex-col items-center gap-0.5 rounded-md border py-2 px-2 transition-colors ${
+                className={`flex flex-col items-center gap-0.5 rounded-md border py-2 px-2 transition-colors min-w-0 ${
                   on
                     ? 'border-accent bg-accent text-white shadow-[0_4px_16px_color-mix(in_oklab,var(--color-accent)_40%,transparent)]'
                     : 'border-card-border bg-card hover:border-accent hover:bg-accent-soft'
                 }`}
               >
-                <span className={`text-[10px] leading-tight text-center ${on ? 'text-white/85' : 'text-muted'}`}>
+                <span className={`block w-full truncate text-[10px] leading-tight text-center ${on ? 'text-white/85' : 'text-muted'}`}>
                   {p.label}
                 </span>
                 <span className={`font-mono text-[14px] font-bold ${on ? 'text-white' : 'text-foreground'}`}>
@@ -228,6 +241,7 @@ export function MatchMarketsPanel({ match, marketRows }: Props) {
           </div>
           <input
             type="number"
+            inputMode="decimal"
             min={MIN_BET}
             max={MAX_BET}
             value={amount}

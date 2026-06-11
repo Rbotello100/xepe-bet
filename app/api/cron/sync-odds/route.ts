@@ -4,6 +4,10 @@ import { discoverAllSports } from '@/lib/sync/discover'
 import { verifyCronAuth } from '@/lib/auth/cron'
 import { ACTIVE_SPORT_KEYS } from '@/lib/constants'
 
+// 60s para cubrir discover + initial sync + refresh diario. Default Vercel = 10s
+// queda corto cuando aparezcan eliminatorias (~16 matches nuevos = ~14-18s).
+export const maxDuration = 60
+
 /**
  * Cron diario (13:00 UTC = 09:00 AM Chile segun vercel.json).
  *
