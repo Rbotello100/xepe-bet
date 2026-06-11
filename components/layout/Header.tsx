@@ -65,10 +65,7 @@ export function Header({ user, active = '/' }: HeaderProps) {
           {user ? (
             <>
               <div className="hidden whitespace-nowrap text-right leading-tight sm:block">
-                <p className="text-sm font-bold text-gold">
-                  {user.total_points.toLocaleString('es-CL')} pts
-                </p>
-                <p className="font-mono text-xs text-muted">
+                <p className="font-mono text-sm font-bold text-gold">
                   ${user.credits.toLocaleString('es-CL')}
                 </p>
               </div>
