@@ -1,20 +1,28 @@
 name: Sync scores cron
 
-# Dispara /api/cron/sync-scores cada 4 horas para liquidar partidos terminados.
-# Antes solo había Vercel cron diario (1x/día), pero la API externa de /scores
-# devuelve max 3 días atrás. Si 3 días seguidos falla, perdemos el partido.
-# Con GitHub Actions cada 4h tenemos ~18 oportunidades por partido — margen
-# de sobra para que algun intento exitoso lo capture.
+# Dispara /api/cron/sync-scores 4 veces al día (mas Vercel cron = 5 total)
+# para liquidar partidos terminados con latencia max ~3-4h.
+#
+# Horarios (UTC con minutos non-round para escapar peak hour de GH Actions):
+#   - 13:07 UTC ≈ 09:07 AM Chile  (cubierto tambien por Vercel cron 13:00)
+#   - 16:12 UTC ≈ 12:12 PM Chile
+#   - 21:18 UTC ≈ 17:18 PM Chile
+#   - 01:23 UTC ≈ 21:23 PM Chile (del dia anterior CL)
+#
+# Costo: si NO hay matches pending en BD, syncFinishedScores early-returns
+# y la call NO toca la API → 0 creditos. Solo cobra (2 creditos) cuando hay
+# un partido recien terminado por sincronizar. Total proyectado Mundial:
+# ~150 creditos. Plan 20K cubre con holgura.
 #
 # Endpoint: /api/cron/sync-scores con Bearer CRON_SECRET.
-# Complementario al Vercel cron — no se duplica porque syncFinishedScores es
-# idempotente (UPDATE con guard status='pending').
+# Idempotente (UPDATE con guard status='pending').
 
 on:
   schedule:
-    # Cada 4 horas en :11 (non-peak) para escapar la cola de GitHub Actions
-    # que prioriza menos los workflows que caen en :00.
-    - cron: "11 */4 * * *"
+    - cron: "7 13 * * *"   # 09:07 AM Chile (UTC-4)
+    - cron: "12 16 * * *"  # 12:12 PM Chile
+    - cron: "18 21 * * *"  # 17:18 PM Chile
+    - cron: "23 1 * * *"   # 21:23 PM Chile (del dia anterior CL en UTC)
   workflow_dispatch: {}
 
 jobs:
