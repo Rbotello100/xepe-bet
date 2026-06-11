@@ -42,7 +42,7 @@ const env = loadEnv()
 const SUPABASE_URL = env.NEXT_PUBLIC_SUPABASE_URL
 const SUPABASE_ANON = env.NEXT_PUBLIC_SUPABASE_ANON_KEY
 const SERVICE_KEY = env.SUPABASE_SERVICE_ROLE_KEY
-const SITE_URL = 'https://xepe-bet-botellorodrigo97-3285s-projects.vercel.app'
+const SITE_URL = 'https://xepe-bet.vercel.app'
 
 if (!SUPABASE_URL || !SUPABASE_ANON || !SERVICE_KEY) {
   console.error('Falta NEXT_PUBLIC_SUPABASE_URL / ANON_KEY / SERVICE_ROLE_KEY')

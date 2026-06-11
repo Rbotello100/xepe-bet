@@ -33,7 +33,7 @@ jobs:
       - name: Hit sync-scores endpoint
         env:
           CRON_SECRET: ${{ secrets.CRON_SECRET }}
-          SITE_URL: https://xepe-bet-botellorodrigo97-3285s-projects.vercel.app
+          SITE_URL: https://xepe-bet.vercel.app
         run: |
           set -e
           echo "→ Disparando sync-scores en ${SITE_URL}"
