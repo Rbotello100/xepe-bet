@@ -5,7 +5,7 @@ import { createAdminClient } from '@/lib/supabase/admin'
 import { revalidatePath } from 'next/cache'
 import { deductCredits, addCredits } from '@/lib/credits'
 import { logError } from '@/lib/log/error'
-import { MIN_BET, MAX_BET } from '@/lib/constants'
+import { MIN_BET, CASINO_MAX_BET } from '@/lib/constants'
 import { generateRelatorMessage } from '@/lib/relator/generate-message'
 import { getCasinoRachaMalaUsuario } from '@/features/relator/stats'
 
@@ -364,8 +364,8 @@ export async function startPenaltyGame(bet: number) {
 
   // Validacion de monto: finite, positivo, dentro del rango permitido.
   // Evita bet negativo (deductCredits suma en vez de restar) o NaN.
-  if (!Number.isFinite(bet) || bet < MIN_BET || bet > MAX_BET) {
-    return { error: `Apuesta debe estar entre $${MIN_BET} y $${MAX_BET}` }
+  if (!Number.isFinite(bet) || bet < MIN_BET || bet > CASINO_MAX_BET) {
+    return { error: `Apuesta debe estar entre $${MIN_BET} y $${CASINO_MAX_BET}` }
   }
 
   const admin = db()
@@ -1018,7 +1018,8 @@ export async function placeFelipeBets(bets: FelipeBetInput[]) {
 
   const totalBet = validatedBets.reduce((sum, b) => sum + b.amount, 0)
   if (totalBet < MIN_BET) return { error: `Apuesta minima total: $${MIN_BET}` }
-  if (totalBet > MAX_BET * 5) return { error: `Apuesta maxima total: $${MAX_BET * 5}` }
+  // Felipe: 24 salas a la vez, cap defensivo CASINO_MAX_BET * 5 = $2500
+  if (totalBet > CASINO_MAX_BET * 5) return { error: `Apuesta maxima total: $${CASINO_MAX_BET * 5}` }
 
   const admin = db()
 

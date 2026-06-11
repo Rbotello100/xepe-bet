@@ -5,7 +5,6 @@ import { createAdminClient } from '@/lib/supabase/admin'
 import { revalidatePath } from 'next/cache'
 import {
   MIN_BET,
-  MAX_BET,
   BET_LOCK_HOURS,
   MIN_PARLAY_LEGS,
   MAX_PARLAY_LEGS,
@@ -104,7 +103,6 @@ export async function placeBet(input: BetInput) {
   const user = await getAuthUser()
   if (!user) return { error: 'No autenticado' }
   if (input.amount < MIN_BET) return { error: `Apuesta minima: $${MIN_BET}` }
-  if (input.amount > MAX_BET) return { error: `Apuesta maxima: $${MAX_BET}` }
   // Pick/UUID invalidos viniendo del server = bypass del UI (el form previene esto).
   // Posible bot o cliente manipulado — logueamos como warn para detectar patrones.
   if (!isValidPick(input.pick)) {
@@ -319,7 +317,6 @@ export async function placeParlay(input: ParlayInput) {
   if (input.legs.length < MIN_PARLAY_LEGS) return { error: `Minimo ${MIN_PARLAY_LEGS} selecciones` }
   if (input.legs.length > MAX_PARLAY_LEGS) return { error: `Maximo ${MAX_PARLAY_LEGS} selecciones` }
   if (input.amount < MIN_BET) return { error: `Apuesta minima: $${MIN_BET}` }
-  if (input.amount > MAX_BET) return { error: `Apuesta maxima: $${MAX_BET}` }
   if (input.legs.some(l => !isValidPick(l.pick))) {
     void logError('bets.placeParlay', 'invalid_pick_bypass', { userId: user.id, picks: input.legs.map(l => l.pick) }, 'warn')
     return { error: 'Pick invalido en alguna seleccion' }

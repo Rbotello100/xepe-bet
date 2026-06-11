@@ -5,7 +5,7 @@ import { Card } from '@/components/ui/Card'
 import { Button } from '@/components/ui/Button'
 import { formatOdds, formatCredits } from '@/lib/utils/format'
 import { useState } from 'react'
-import { MIN_BET, MAX_BET } from '@/lib/constants'
+import { MIN_BET } from '@/lib/constants'
 import { placeParlay } from '@/features/bets/actions'
 import { toast } from 'sonner'
 
@@ -86,10 +86,9 @@ export function ParlayPage({ credits }: ParlayPageProps) {
         <input
           type="number"
           min={MIN_BET}
-          max={MAX_BET}
           value={amount}
           onChange={e => setAmount(e.target.value)}
-          placeholder={`Monto ($${MIN_BET}-$${MAX_BET})`}
+          placeholder={`Monto a apostar (min $${MIN_BET})`}
           className="w-full rounded-lg border border-slate-600 bg-slate-700 px-3 py-2.5 text-sm text-white placeholder:text-slate-500 focus:border-[var(--casino-red)] focus:outline-none"
         />
 

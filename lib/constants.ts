@@ -1,7 +1,14 @@
 // --- Credits & Betting ---
 export const INITIAL_CREDITS = 5000
-export const MIN_BET = 10
-export const MAX_BET = 500
+// MIN_BET = 1 evita microbets de centavos. NO hay MAX_BET para bets/parlay
+// de partidos — el cap natural es el balance del user (deductCredits falla
+// con 'Creditos insuficientes'). El premio se limita por MAX_PARLAY_PAYOUT
+// ($50k) en parlays y por el cap global de balance ($1M) en add_credits_atomic.
+export const MIN_BET = 1
+// Cap defensivo SOLO para Penales del casino: el multiplicador llega a x200,
+// asi que sin tope una sesion de $5000 puede pagar $1M y chocar con el cap
+// global. $500 con x200 = $100k max payout — limite holgado.
+export const CASINO_MAX_BET = 500
 
 // Whitelist de picks aceptados (Tier 1+2 — 19 picks).
 // La RPC SQL tiene CHECK constraint paralelo (migration

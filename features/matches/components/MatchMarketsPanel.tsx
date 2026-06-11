@@ -5,7 +5,7 @@ import { toast } from 'sonner'
 import { useParlay, type ParlayLeg } from '@/hooks/useParlay'
 import { placeBet } from '@/features/bets/actions'
 import { formatOdds, formatCredits } from '@/lib/utils/format'
-import { MIN_BET, MAX_BET } from '@/lib/constants'
+import { MIN_BET } from '@/lib/constants'
 import type { MatchWithTeams } from '@/lib/types'
 
 /**
@@ -133,7 +133,7 @@ export function MatchMarketsPanel({ match, marketRows }: Props) {
   }
 
   const handleBetNow = async () => {
-    if (!selectedPick || numAmount < MIN_BET || numAmount > MAX_BET) return
+    if (!selectedPick || numAmount < MIN_BET) return
     if (processingRef.current) return
     processingRef.current = true
     setSubmitting('bet')
@@ -243,10 +243,9 @@ export function MatchMarketsPanel({ match, marketRows }: Props) {
             type="number"
             inputMode="decimal"
             min={MIN_BET}
-            max={MAX_BET}
             value={amount}
             onChange={e => setAmount(e.target.value)}
-            placeholder={`Monto $${MIN_BET}–$${MAX_BET}`}
+            placeholder={`Monto a apostar (min $${MIN_BET})`}
             className="w-full rounded border border-card-border bg-card px-3 py-2 text-sm text-foreground placeholder:text-subtle focus:border-accent focus:outline-none"
           />
           {numAmount >= MIN_BET && (
@@ -258,7 +257,7 @@ export function MatchMarketsPanel({ match, marketRows }: Props) {
             <button
               type="button"
               onClick={handleBetNow}
-              disabled={numAmount < MIN_BET || numAmount > MAX_BET || submitting !== null}
+              disabled={numAmount < MIN_BET || submitting !== null}
               className="rounded-md bg-accent px-3 py-2 text-sm font-bold text-background shadow-[0_4px_16px_color-mix(in_oklab,var(--color-accent)_30%,transparent)] transition-opacity hover:opacity-90 disabled:opacity-40 disabled:cursor-not-allowed"
             >
               {submitting === 'bet' ? 'Apostando…' : 'Apostar ahora'}
