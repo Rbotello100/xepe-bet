@@ -323,14 +323,14 @@ export async function autoResolveMatch(matchId: string, homeScore: number, awayS
         }, 'critical')
       }
     } else if (outcome === 'void') {
-      // Refund del stake con reference_id estable. Sufijo '-void' diferencia
-      // del posible 'win' que comparta el bet.id como referencia. UNIQUE
-      // constraint en credit_transactions(user_id, type, reference_id)
-      // garantiza idempotencia si se reintenta.
+      // Refund del stake usando bet.id como reference_id. UNIQUE constraint es
+      // (user_id, type, reference_id) — distinto type ('refund' vs 'win') ya
+      // diferencia esta tx del posible payout. NO concatenar sufijo: la columna
+      // reference_id es UUID y rechaza strings con sufijo.
       const refunded = await addCredits(
         bet.user_id, bet.amount, 'refund',
         `Refund apuesta ${bet.pick} (Draw No Bet con empate)`,
-        bet.id + '-void',
+        bet.id,
       )
       if (!refunded.success) {
         void logError('sync.autoResolveMatch.voidRefundFailed', refunded.error ?? 'unknown', {

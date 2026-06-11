@@ -265,10 +265,11 @@ export async function playSlots() {
     if (!paid.success) {
       // addCredits ya loguea el error a error_log. Slots no tiene tabla de
       // sesion para "rollback", asi que refundamos el cost del spin para que
-      // el user pueda reintentar sin perder la apuesta. Usamos un reference_id
-      // distinto al win original (suffix -refund) para no chocar con el UNIQUE.
+      // el user pueda reintentar sin perder la apuesta. reference_id = spinId
+      // puro (UUID); el type 'refund' lo diferencia del 'bet' original que
+      // comparte el mismo spinId. NO concatenar sufijos: la columna es UUID.
       if (cost > 0) {
-        await addCredits(user.id, cost, 'refund', 'Slots: refund por fallo en pago', spinId + '-refund')
+        await addCredits(user.id, cost, 'refund', 'Slots: refund por fallo en pago', spinId)
       }
       return { error: 'No se pudo procesar el pago, reintentá en unos segundos' }
     }
@@ -1058,10 +1059,12 @@ export async function placeFelipeBets(bets: FelipeBetInput[]) {
     .single()
 
   if (error || !session) {
-    // Rollback del deduct con reference_id estable. Si la action se reintenta
-    // por timeout y termina llamando este rollback de nuevo, el UNIQUE index
-    // garantiza que solo 1 refund se acredita.
-    await addCredits(user.id, totalBet, 'refund', 'Rollback Felipe sesion fallida', sessionId + '-rollback')
+    // Rollback del deduct usando sessionId puro como reference_id. La columna
+    // es UUID (NO sufijos). type='refund' diferencia esta tx de cualquier
+    // otra que use el mismo sessionId. Si la action se reintenta por timeout
+    // y este rollback se llama de nuevo, el UNIQUE index garantiza un solo
+    // refund acreditado (mismo idempotency que para refundAbandonedSessions).
+    await addCredits(user.id, totalBet, 'refund', 'Rollback Felipe sesion fallida', sessionId)
     return { error: 'Error al crear ronda' }
   }
 

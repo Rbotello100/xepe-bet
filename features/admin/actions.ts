@@ -117,12 +117,13 @@ export async function resolveMatch(matchId: string, homeScore: number, awayScore
         await logError('admin.resolveMatch.payBet', paid.error ?? 'pago_fallido', { betId: bet.id, userId: bet.user_id, amount: bet.potential_payout, matchId }, 'critical')
       }
     } else if (outcome === 'void') {
-      // Refund del stake (Draw No Bet con empate). reference_id estable con
-      // sufijo '-void' para idempotencia.
+      // Refund del stake (Draw No Bet con empate). reference_id = bet.id puro
+      // (UUID); el type 'refund' lo diferencia de la posible 'win' que comparte
+      // el mismo bet.id. La columna reference_id es UUID, NO acepta sufijos.
       const refunded = await addCredits(
         bet.user_id, bet.amount, 'refund',
         `Refund ${bet.pick} (Draw No Bet con empate)`,
-        bet.id + '-void',
+        bet.id,
       )
       if (!refunded.success) {
         await logError('admin.resolveMatch.voidRefund', refunded.error ?? 'refund_fallido', { betId: bet.id, userId: bet.user_id, amount: bet.amount, matchId }, 'critical')
