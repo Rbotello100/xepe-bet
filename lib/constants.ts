@@ -128,6 +128,14 @@ export const ODDS_OPEN_HOURS_BEFORE = 840 // 35 dias
 // Con 3 era muy bajo y los matches abandonaban antes de que la API los tuviera.
 export const ODDS_MAX_SYNC_ATTEMPTS = 10
 
+// Refresh diario: para partidos a <= ODDS_REFRESH_WINDOW_HOURS del kickoff,
+// el cron de las 9 AM Chile re-pide odds aunque ya tengan odds_synced=true.
+// 48h = 2 dias cubre lo que la mayoria de la gente apuesta (vispera y dia del
+// partido). Partidos mas lejanos quedan con las odds del sync inicial — si
+// el mercado se movio >3%, oddsWithinTolerance los rechaza y el cliente
+// recarga al dia siguiente con las odds actualizadas.
+export const ODDS_REFRESH_WINDOW_HOURS = 48
+
 // Scores: Vercel Hobby permite cron 1x/dia. /scores solo devuelve hasta 3 dias atras,
 // asi que un match tiene ~3 oportunidades de ser capturado automaticamente antes de
 // salir de ventana. 5 intentos deja margen si algun run falla por transient errors.

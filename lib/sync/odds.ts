@@ -1,6 +1,6 @@
 import { fetchOdds, fetchEventOdds } from '@/lib/odds-api/client'
 import { createAdminClient } from '@/lib/supabase/admin'
-import { getMatchesNeedingOdds } from './scheduler'
+import { getMatchesNeedingOdds, getMatchesForOddsRefresh } from './scheduler'
 import { logOddsApiUsage } from '@/lib/odds-api/usage'
 
 const EXTRA_MARKETS = ['btts', 'double_chance', 'draw_no_bet', 'alternate_totals']
@@ -162,15 +162,26 @@ type TriggeredBy = 'cron' | 'admin_manual' | 'test'
  * @param sportKey override: forzar un sport específico (útil para admin manual / imports)
  * @param triggeredBy quién disparó la sync (audit trail)
  */
+type SyncMode = 'initial' | 'refresh'
+
 export async function syncMatchOdds(
   sportKey?: string,
   triggeredBy: TriggeredBy = 'cron',
+  mode: SyncMode = 'initial',
 ) {
   const supabase = createAdminClient()
 
-  const pending = await getMatchesNeedingOdds()
+  // initial = primer sync de partidos sin odds (odds_synced=false).
+  // refresh = re-sync de partidos proximos al kickoff (<=48h) ya sincronizados.
+  const pending = mode === 'refresh'
+    ? await getMatchesForOddsRefresh()
+    : await getMatchesNeedingOdds()
   if (pending.length === 0) {
-    return { skipped: true, reason: 'No matches pending odds sync', synced: 0, by_sport: [] as SyncBucket[] }
+    return {
+      skipped: true,
+      reason: mode === 'refresh' ? 'No matches en ventana de refresh' : 'No matches pending odds sync',
+      synced: 0, by_sport: [] as SyncBucket[],
+    }
   }
 
   // Agrupar por sport_key (si vino override, forzamos ese único bucket)
@@ -207,17 +218,25 @@ export async function syncMatchOdds(
 
       for (const match of matches) {
         if (!match.external_id) {
-          await supabase.from('matches').update({ odds_sync_attempts: 999 }).eq('id', match.id)
+          // En modo refresh el match SI tiene external_id (lo verifica getMatchesForOddsRefresh).
+          // En initial, si no tiene, lo descartamos definitivo.
+          if (mode === 'initial') {
+            await supabase.from('matches').update({ odds_sync_attempts: 999 }).eq('id', match.id)
+          }
           continue
         }
 
         const event = events.find(e => e.id === match.external_id)
 
         if (!event) {
-          await supabase
-            .from('matches')
-            .update({ odds_sync_attempts: await incAttempts(match.id, 'odds_sync_attempts') })
-            .eq('id', match.id)
+          // En refresh, si la API no devuelve el match esta vez, no es problema —
+          // las odds existentes quedan. NO incrementamos attempts.
+          if (mode === 'initial') {
+            await supabase
+              .from('matches')
+              .update({ odds_sync_attempts: await incAttempts(match.id, 'odds_sync_attempts') })
+              .eq('id', match.id)
+          }
           notFound++
           continue
         }
@@ -226,10 +245,12 @@ export async function syncMatchOdds(
         const h2h = bookmaker?.markets.find(m => m.key === 'h2h')
 
         if (!bookmaker || !h2h) {
-          await supabase
-            .from('matches')
-            .update({ odds_sync_attempts: await incAttempts(match.id, 'odds_sync_attempts') })
-            .eq('id', match.id)
+          if (mode === 'initial') {
+            await supabase
+              .from('matches')
+              .update({ odds_sync_attempts: await incAttempts(match.id, 'odds_sync_attempts') })
+              .eq('id', match.id)
+          }
           noBookmaker++
           continue
         }
@@ -252,13 +273,16 @@ export async function syncMatchOdds(
         const awayPrice = sanityCheck(awayOutcome?.price)
 
         // Si NO hay al menos una cuota razonable, no marcamos odds_synced=true
-        // (asi el cron reintenta) y aumentamos attempts.
+        // (asi el cron reintenta) y aumentamos attempts. En refresh, simplemente
+        // mantenemos las odds anteriores sin actualizar.
         const hasUsableOdd = homePrice !== null || drawPrice !== null || awayPrice !== null
         if (!hasUsableOdd) {
-          await supabase
-            .from('matches')
-            .update({ odds_sync_attempts: await incAttempts(match.id, 'odds_sync_attempts') })
-            .eq('id', match.id)
+          if (mode === 'initial') {
+            await supabase
+              .from('matches')
+              .update({ odds_sync_attempts: await incAttempts(match.id, 'odds_sync_attempts') })
+              .eq('id', match.id)
+          }
           noBookmaker++
           continue
         }
@@ -304,7 +328,7 @@ export async function syncMatchOdds(
       credits_used: 1,
       remaining,
       triggered_by: triggeredBy,
-      result_summary: { pending: matches.length, synced, not_found: notFound, no_bookmaker: noBookmaker },
+      result_summary: { mode, pending: matches.length, synced, not_found: notFound, no_bookmaker: noBookmaker },
       error: errorMsg,
     })
 
@@ -315,6 +339,7 @@ export async function syncMatchOdds(
   }
 
   return {
+    mode,
     pending: pending.length,
     synced: totalSynced,
     not_found: totalNotFound,
@@ -322,6 +347,23 @@ export async function syncMatchOdds(
     api_remaining: lastRemaining,
     by_sport: results,
   }
+}
+
+/**
+ * Re-sincroniza odds de partidos en ventana ODDS_REFRESH_WINDOW_HOURS (48h)
+ * para reflejar movimiento del mercado (lesiones, suspensiones, etc).
+ *
+ * Costo: ~5 creditos por partido (1 h2h + 4 mercados extra). Para el
+ * Mundial, ~6-8 partidos por dia en ventana = 30-40 creditos/dia.
+ *
+ * No incrementa attempts si la API no devuelve un match — las odds existentes
+ * quedan validas. Sale silencioso si no hay matches en ventana.
+ */
+export async function refreshMatchOdds(
+  sportKey?: string,
+  triggeredBy: TriggeredBy = 'cron',
+) {
+  return syncMatchOdds(sportKey, triggeredBy, 'refresh')
 }
 
 async function incAttempts(matchId: string, column: string): Promise<number> {

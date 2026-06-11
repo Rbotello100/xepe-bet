@@ -1,4 +1,4 @@
-import { ODDS_OPEN_HOURS_BEFORE, ODDS_MAX_SYNC_ATTEMPTS, SCORE_SYNC_DELAY_MIN, SCORE_MAX_SYNC_ATTEMPTS, SCORE_SYNC_WINDOW_DAYS } from '@/lib/constants'
+import { ODDS_OPEN_HOURS_BEFORE, ODDS_MAX_SYNC_ATTEMPTS, ODDS_REFRESH_WINDOW_HOURS, SCORE_SYNC_DELAY_MIN, SCORE_MAX_SYNC_ATTEMPTS, SCORE_SYNC_WINDOW_DAYS } from '@/lib/constants'
 import { createAdminClient } from '@/lib/supabase/admin'
 
 /**
@@ -22,6 +22,35 @@ export async function getMatchesNeedingOdds(): Promise<{ id: string; external_id
     .lt('odds_sync_attempts', ODDS_MAX_SYNC_ATTEMPTS)
     .gte('starts_at', windowStart.toISOString())
     .lte('starts_at', windowEnd.toISOString())
+    .in('status', ['scheduled', 'open'])
+
+  return data ?? []
+}
+
+/**
+ * Devuelve los partidos para REFRESH de odds — los que ya estan sincronizados
+ * pero su kickoff esta en ventana ODDS_REFRESH_WINDOW_HOURS (default 48h).
+ * El cron diario los re-pide para que las odds reflejen movimiento del mercado
+ * (lesiones, suspensiones, cambio de tactica, etc).
+ *
+ * Diferente de getMatchesNeedingOdds: ese busca los que NUNCA sincronizaron
+ * (odds_synced=false). Este busca los que YA sincronizaron pero estan
+ * proximos al kickoff y vale la pena refrescar.
+ */
+export async function getMatchesForOddsRefresh(): Promise<{ id: string; external_id: string | null; sport_key: string }[]> {
+  const supabase = createAdminClient()
+
+  const now = new Date()
+  const refreshUntil = new Date()
+  refreshUntil.setHours(refreshUntil.getHours() + ODDS_REFRESH_WINDOW_HOURS)
+
+  const { data } = await supabase
+    .from('matches')
+    .select('id, external_id, sport_key')
+    .eq('odds_synced', true)
+    .not('external_id', 'is', null)
+    .gte('starts_at', now.toISOString())
+    .lte('starts_at', refreshUntil.toISOString())
     .in('status', ['scheduled', 'open'])
 
   return data ?? []
