@@ -223,9 +223,17 @@ export async function cashOutBet(betId: string) {
 
   const admin = db()
   const { data: bet } = await admin.from('bets')
-    .select('odds_at_placement, amount, status, match:matches!match_id(starts_at, status, odds_home, odds_draw, odds_away, home_team:teams!home_team_id(name), away_team:teams!away_team_id(name)), pick')
+    .select('odds_at_placement, amount, status, market_type, match:matches!match_id(starts_at, status, odds_home, odds_draw, odds_away, home_team:teams!home_team_id(name), away_team:teams!away_team_id(name)), pick')
     .eq('id', betId).eq('user_id', user.id).eq('status', 'pending').single()
   if (!bet) return { error: 'Apuesta no encontrada' }
+
+  // Cash out solo disponible para 1X2 — los mercados extra usan match_market_odds
+  // y la formula de cashout actual asume odds_home/draw/away. Permitir cashout
+  // de BTTS/DNB/totals sin leer las odds correctas calcularia un valor erroneo
+  // (caia a odds_draw por defecto). Hasta que extendamos el calculo, bloqueamos.
+  if (bet.market_type && bet.market_type !== '1x2') {
+    return { error: 'Cash out disponible solo para apuestas 1X2 en este momento' }
+  }
 
   // Supabase devuelve el match como array cuando es un join 1:N; aca es 1:1, asi
   // que tomamos el primero. El cast pasa por unknown porque los tipos generados
