@@ -167,6 +167,14 @@ export async function MatchList({ filter = 'hoy' }: MatchListProps) {
                           Math.round((c.away / c.total) * 100),
                         ] as [number, number, number])
                       : undefined
+                    const stakes = c && c.total > 0
+                      ? ({
+                          home: c.homeStake,
+                          draw: c.drawStake,
+                          away: c.awayStake,
+                          total: c.totalStake,
+                        })
+                      : undefined
                     return (
                       <MatchCard
                         key={match.id}
@@ -174,6 +182,7 @@ export async function MatchList({ filter = 'hoy' }: MatchListProps) {
                         marketRows={oddsByMatch.get(match.id) ?? []}
                         dist={dist}
                         pool={c?.total}
+                        stakes={stakes}
                       />
                     )
                   })}

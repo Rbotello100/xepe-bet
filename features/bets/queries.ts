@@ -143,14 +143,26 @@ export async function getBestBetOfTheDay(): Promise<BestBetData | null> {
 
 // ==========================================================
 // Crowd distribution per match (for MatchCard pickbar).
-// Returns map of matchId -> { home, draw, away, total } as ABSOLUTE counts.
-// Caller computes percentages and decides whether to render.
+// Returns map of matchId -> conteos y stakes por bucket 1X2.
+//
+// IMPORTANTE: solo cuenta bets de market_type='1x2'. Las bets de mercados
+// extra (BTTS, DNB, totals, doble chance) NO entran en la distribucion —
+// la barrita es exclusivamente del mercado 1X2. Antes este filtro NO
+// existia y cada BTTS/DNB/total caia al bucket "draw" (default del else),
+// distorsionando la barra.
+//
+// Tambien acumulamos amount por bucket para mostrar al user no solo cuanta
+// gente apuesta sino cuanta plata movio cada opcion.
 // ==========================================================
 export interface MatchCrowd {
   home: number
   draw: number
   away: number
   total: number
+  homeStake: number
+  drawStake: number
+  awayStake: number
+  totalStake: number
 }
 
 // La distribucion no necesita ser real-time — cambia gradualmente. Cachear
@@ -160,15 +172,31 @@ export interface MatchCrowd {
 const _crowdDistArr = unstable_cache(
   async () => {
     const admin = createAdminClient()
-    const { data } = await admin.from('bets').select('match_id, pick').eq('status', 'pending')
+    const { data } = await admin.from('bets')
+      .select('match_id, pick, amount')
+      .eq('status', 'pending')
+      .eq('market_type', '1x2')
     const map = new Map<string, MatchCrowd>()
-    for (const row of (data ?? []) as { match_id: string; pick: string }[]) {
+    for (const row of (data ?? []) as { match_id: string; pick: string; amount: number }[]) {
       if (!row.match_id) continue
-      const cur = map.get(row.match_id) ?? { home: 0, draw: 0, away: 0, total: 0 }
-      if (row.pick === 'home' || row.pick === '1') cur.home++
-      else if (row.pick === 'away' || row.pick === '2') cur.away++
-      else cur.draw++
-      cur.total++
+      const cur = map.get(row.match_id) ?? {
+        home: 0, draw: 0, away: 0, total: 0,
+        homeStake: 0, drawStake: 0, awayStake: 0, totalStake: 0,
+      }
+      const stake = Number(row.amount) || 0
+      if (row.pick === 'home' || row.pick === '1') {
+        cur.home++; cur.homeStake += stake
+      } else if (row.pick === 'away' || row.pick === '2') {
+        cur.away++; cur.awayStake += stake
+      } else if (row.pick === 'draw' || row.pick === 'X') {
+        cur.draw++; cur.drawStake += stake
+      } else {
+        // No deberia pasar (el filtro market_type='1x2' garantiza picks 1X2)
+        // pero por defensa NO lo metemos al draw bucket — lo ignoramos para
+        // no contaminar la distribucion.
+        continue
+      }
+      cur.total++; cur.totalStake += stake
       map.set(row.match_id, cur)
     }
     return [...map.entries()] as [string, MatchCrowd][]

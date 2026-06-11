@@ -2,7 +2,7 @@
 
 import { useState } from 'react'
 import type { MatchWithTeams } from '@/lib/types'
-import { formatDate } from '@/lib/utils/format'
+import { formatDate, formatCredits } from '@/lib/utils/format'
 import { BET_LOCK_HOURS } from '@/lib/constants'
 import { MatchMarketsPanel, type MarketOddsRow } from './MatchMarketsPanel'
 
@@ -14,16 +14,26 @@ interface MatchCardProps {
   marketRows?: MarketOddsRow[]
   /** Distribucion real de la multitud [%home, %draw, %away]. Omitir si no hay bets. */
   dist?: [number, number, number]
-  /** Count real de bets pending del match. Omitir si 0. */
+  /** Count real de bets pending del match (solo 1X2). Omitir si 0. */
   pool?: number
+  /** Stakes acumulados por bucket 1X2 + total. Omitir si pool=0. */
+  stakes?: { home: number; draw: number; away: number; total: number }
 }
 
-function PickBar({ dist }: { dist: [number, number, number] }) {
+function PickBar({ dist, stakes, homeName, awayName }: {
+  dist: [number, number, number]
+  stakes?: { home: number; draw: number; away: number }
+  homeName: string
+  awayName: string
+}) {
   const [h, x, a] = dist
+  const tooltip = stakes
+    ? `${homeName} ${h}% · ${formatCredits(stakes.home)}\nEmpate ${x}% · ${formatCredits(stakes.draw)}\n${awayName} ${a}% · ${formatCredits(stakes.away)}`
+    : `${h}% local · ${x}% empate · ${a}% visita`
   return (
     <div
       className="flex h-1.5 flex-1 overflow-hidden rounded-full bg-sunken"
-      title={`${h}% local · ${x}% empate · ${a}% visita`}
+      title={tooltip}
     >
       <span className="h-full bg-accent" style={{ width: `${h}%` }} />
       <span className="h-full bg-subtle" style={{ width: `${x}%` }} />
@@ -32,7 +42,7 @@ function PickBar({ dist }: { dist: [number, number, number] }) {
   )
 }
 
-export function MatchCard({ match, marketRows = [], dist, pool }: MatchCardProps) {
+export function MatchCard({ match, marketRows = [], dist, pool, stakes }: MatchCardProps) {
   const isFinished = match.status === 'finished'
   const isLive = match.status === 'live'
   const lockCutoff = new Date(new Date(match.starts_at).getTime() - BET_LOCK_HOURS * 60 * 60 * 1000)
@@ -126,12 +136,36 @@ export function MatchCard({ match, marketRows = [], dist, pool }: MatchCardProps
 
         {/* Pool/distribution preview cuando NO esta expandido y hay data */}
         {!expanded && !isFinished && dist && (
-          <div className="mt-[11px] flex items-center gap-3">
-            <PickBar dist={dist} />
-            {pool !== undefined && pool > 0 && (
-              <span className="whitespace-nowrap font-mono text-[11px] text-muted">
-                {pool.toLocaleString('es-CL')} apostando
-              </span>
+          <div className="mt-[11px] space-y-1">
+            <div className="flex items-center gap-3">
+              <PickBar
+                dist={dist}
+                stakes={stakes}
+                homeName={match.home_team.name}
+                awayName={match.away_team.name}
+              />
+              {pool !== undefined && pool > 0 && (
+                <span className="whitespace-nowrap font-mono text-[11px] text-muted">
+                  {pool.toLocaleString('es-CL')} apostando
+                  {stakes && stakes.total > 0 && (
+                    <span className="text-accent-deep"> · {formatCredits(stakes.total)}</span>
+                  )}
+                </span>
+              )}
+            </div>
+            {/* Breakdown por bucket — solo si tenemos stakes y hay plata */}
+            {stakes && stakes.total > 0 && (
+              <div className="flex items-center justify-between gap-2 font-mono text-[10px] text-subtle">
+                <span className="truncate">
+                  <span className="text-accent">●</span> {formatCredits(stakes.home)}
+                </span>
+                <span className="truncate">
+                  <span className="text-subtle">●</span> {formatCredits(stakes.draw)}
+                </span>
+                <span className="truncate">
+                  <span className="text-cyan">●</span> {formatCredits(stakes.away)}
+                </span>
+              </div>
             )}
           </div>
         )}
