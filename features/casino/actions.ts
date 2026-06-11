@@ -357,17 +357,18 @@ function getPenaltyNextProb(goalsScored: number): number {
   return (TOTAL_ZONES - coverage) / TOTAL_ZONES
 }
 
-export async function startPenaltyGame(bet: number) {
+// Costo fijo del juego Penales (mismo patron que SLOTS_COST y MINES_COST).
+// Hardcoded server-side: el cliente NO elige el monto, no hace falta validar
+// rango. Defensa en profundidad: aunque alguien pegue directo a la action sin
+// pasar por el UI, el costo siempre es PENALTY_COST.
+const PENALTY_COST = 20
+
+export async function startPenaltyGame() {
   const user = await getAuthUser()
   if (!user) return { error: 'No autenticado' }
   if (!(await throttleCasino(user.id))) return { error: 'Esperá un segundo entre acciones' }
 
-  // Validacion de monto: finite, positivo, dentro del rango permitido.
-  // Evita bet negativo (deductCredits suma en vez de restar) o NaN.
-  if (!Number.isFinite(bet) || bet < MIN_BET || bet > CASINO_MAX_BET) {
-    return { error: `Apuesta debe estar entre $${MIN_BET} y $${CASINO_MAX_BET}` }
-  }
-
+  const bet = PENALTY_COST
   const admin = db()
 
   // Refund de sesion activa previa (abandono por double-click, navegacion, etc).

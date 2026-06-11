@@ -102,7 +102,7 @@ export function PenaltyGame({ freeStart = false, userCredits = 0 }: PenaltyGameP
     setLoading(true)
     setErrorMsg(null)
     try {
-      const res = await startPenaltyGame(BET)
+      const res = await startPenaltyGame()
       if ('error' in res && res.error) {
         setErrorMsg(res.error)
         return
