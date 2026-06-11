@@ -6,12 +6,10 @@ import { Card } from '@/components/ui/Card'
 import { Badge } from '@/components/ui/Badge'
 import { Button } from '@/components/ui/Button'
 import { formatCredits, formatOdds } from '@/lib/utils/format'
-import { calculateCashOut } from '@/lib/utils/cash-out'
 import type { Bet } from '@/lib/types'
 
 interface BetCardProps {
   bet: Bet
-  currentOdds?: { home: number | null; draw: number | null; away: number | null }
   locked?: boolean
 }
 
@@ -23,19 +21,16 @@ const STATUS_MAP = {
   cashed_out: { label: 'Cash Out', variant: 'info' as const },
 }
 
-export function BetCard({ bet, currentOdds, locked }: BetCardProps) {
+export function BetCard({ bet, locked }: BetCardProps) {
   const status = STATUS_MAP[bet.status]
-  const canCashOut = bet.status === 'pending' && !locked && currentOdds
+  const canCashOut = bet.status === 'pending' && !locked
 
-  let cashOutValue: number | null = null
-  if (canCashOut && currentOdds) {
-    const current = bet.pick === 'home' || bet.pick === '1' ? currentOdds.home
-      : bet.pick === 'away' || bet.pick === '2' ? currentOdds.away
-      : currentOdds.draw
-    if (current) {
-      cashOutValue = Math.round(calculateCashOut(bet.odds_at_placement, current, bet.amount) * 100) / 100
-    }
-  }
+  // Cashout fijo: 92% del stake. Misma formula que el server en cashOutBet.
+  // NO depende de currentOdds: con stake × 0.92 no hace falta leer match.odds*
+  // ni match_market_odds — el valor siempre es estable.
+  const cashOutValue: number | null = canCashOut
+    ? Math.round(Number(bet.amount) * 0.92 * 100) / 100
+    : null
 
   const [cashOutState, cashOutAction, isCashingOut] = useActionState(
     async () => cashOutBet(bet.id),

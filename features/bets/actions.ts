@@ -18,7 +18,6 @@ import {
   type BetPick,
   type BetMarket,
 } from '@/lib/constants'
-import { calculateCashOut } from '@/lib/utils/cash-out'
 import { resolveServerOddsExtended, oddsWithinTolerance } from '@/lib/utils/resolve-pick-odds'
 import { generateRelatorMessage } from '@/lib/relator/generate-message'
 import { getRachaUsuario } from '@/features/relator/stats'
@@ -223,17 +222,9 @@ export async function cashOutBet(betId: string) {
 
   const admin = db()
   const { data: bet } = await admin.from('bets')
-    .select('odds_at_placement, amount, status, market_type, match:matches!match_id(starts_at, status, odds_home, odds_draw, odds_away, home_team:teams!home_team_id(name), away_team:teams!away_team_id(name)), pick')
+    .select('odds_at_placement, amount, status, market_type, match:matches!match_id(starts_at, status, home_team:teams!home_team_id(name), away_team:teams!away_team_id(name)), pick')
     .eq('id', betId).eq('user_id', user.id).eq('status', 'pending').single()
   if (!bet) return { error: 'Apuesta no encontrada' }
-
-  // Cash out solo disponible para 1X2 — los mercados extra usan match_market_odds
-  // y la formula de cashout actual asume odds_home/draw/away. Permitir cashout
-  // de BTTS/DNB/totals sin leer las odds correctas calcularia un valor erroneo
-  // (caia a odds_draw por defecto). Hasta que extendamos el calculo, bloqueamos.
-  if (bet.market_type && bet.market_type !== '1x2') {
-    return { error: 'Cash out disponible solo para apuestas 1X2 en este momento' }
-  }
 
   // Supabase devuelve el match como array cuando es un join 1:N; aca es 1:1, asi
   // que tomamos el primero. El cast pasa por unknown porque los tipos generados
@@ -241,9 +232,6 @@ export async function cashOutBet(betId: string) {
   type MatchJoined = {
     starts_at: string
     status: string
-    odds_home: number
-    odds_draw: number
-    odds_away: number
     home_team?: { name: string } | { name: string }[]
     away_team?: { name: string } | { name: string }[]
   }
@@ -253,23 +241,25 @@ export async function cashOutBet(betId: string) {
   const matchError = validateMatchOpen(match)
   if (matchError) return { error: `Cash out no disponible: ${matchError}` }
 
-  let currentOdds: number
-  if (bet.pick === 'home' || bet.pick === '1') currentOdds = match.odds_home
-  else if (bet.pick === 'away' || bet.pick === '2') currentOdds = match.odds_away
-  else currentOdds = match.odds_draw
-  if (!Number.isFinite(currentOdds) || currentOdds <= 0) return { error: 'Odds no disponibles' }
-
-  const cashOutValue = Math.round(calculateCashOut(bet.odds_at_placement, currentOdds, bet.amount) * 100) / 100
+  // Cashout fijo: 92% del stake. NO leemos odds actuales (ni 1X2 ni mercados
+  // extra) porque agrega complejidad y puntos de falla — el cron refresca cada
+  // 24h y para mercados extra puede no haber row hasta el primer seed. Con el
+  // modelo "stake × 0.92" el comportamiento es siempre estable, sin importar
+  // mercado ni movimiento de odds. El 8% es el margen industry-standard del
+  // bookmaker. Funciona uniforme para 1X2/BTTS/DNB/totals/doble-chance.
+  const CASHOUT_MARGIN = 0.92
+  const cashOutValue = Math.round(Number(bet.amount) * CASHOUT_MARGIN * 100) / 100
   if (!Number.isFinite(cashOutValue) || cashOutValue <= 0) {
     void logError('bets.cashOutBet', 'invalid_calc', {
-      betId, oddsAt: bet.odds_at_placement, current: currentOdds, amount: bet.amount, result: cashOutValue,
+      betId, amount: bet.amount, result: cashOutValue,
     })
     return { error: 'Cash out no disponible' }
   }
 
   // Upper bound defensa-en-profundidad: el cashout nunca puede exceder el payout
-  // teorico maximo (amount * odds_at_placement). Si calculateCashOut devuelve
-  // algo absurdo (bug, manipulacion de odds), aborta antes de pagar.
+  // teorico maximo (amount * odds_at_placement). Con el modelo stake × 0.92
+  // siempre estamos OK (0.92 << odds >= 1.01) pero dejamos el guard por si
+  // alguien cambia la formula sin pensar.
   const maxPayout = Number(bet.amount) * Number(bet.odds_at_placement)
   if (cashOutValue > maxPayout + 0.01) {
     // CRITICAL: posible exploit. El usuario logro forzar un cashout > payout maximo
