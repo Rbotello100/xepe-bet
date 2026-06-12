@@ -1,23 +1,43 @@
 import { unstable_cache } from 'next/cache'
 import { createServerClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
-import type { Bet } from '@/lib/types'
+import type { Bet, BetWithMatch } from '@/lib/types'
 
 // Default limit 50 + opcional offset para paginacion. Antes era unbounded:
 // si un user activo del Mundial llegaba a 1000+ bets, /bets cargaba todos
 // en una sola query. Ahora caps con sensible defaults; el caller que necesite
 // mas paginate via offset.
-export async function getUserBets(userId: string, limit = 50, offset = 0): Promise<Bet[]> {
+export async function getUserBets(userId: string, limit = 50, offset = 0): Promise<BetWithMatch[]> {
   const admin = createAdminClient()
   const { data, error } = await admin
     .from('bets')
-    .select('*')
+    .select(`
+      *,
+      match:matches!match_id(
+        *,
+        home_team:teams!home_team_id(*),
+        away_team:teams!away_team_id(*)
+      )
+    `)
     .eq('user_id', userId)
     .order('created_at', { ascending: false })
     .range(offset, offset + limit - 1)
 
   if (error) throw new Error(error.message)
-  return (data ?? []) as Bet[]
+  // Supabase devuelve relaciones como objeto/array según cardinalidad — normalizamos.
+  return (data ?? []).map((row: Record<string, unknown>) => {
+    const m = row.match as unknown
+    const match = Array.isArray(m) ? m[0] : m
+    if (match) {
+      if (Array.isArray((match as { home_team?: unknown }).home_team)) {
+        (match as { home_team: unknown }).home_team = (match as { home_team: unknown[] }).home_team[0]
+      }
+      if (Array.isArray((match as { away_team?: unknown }).away_team)) {
+        (match as { away_team: unknown }).away_team = (match as { away_team: unknown[] }).away_team[0]
+      }
+    }
+    return { ...row, match } as BetWithMatch
+  })
 }
 
 export async function getPendingBets(userId: string, limit = 50): Promise<Bet[]> {

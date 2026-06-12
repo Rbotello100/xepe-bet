@@ -6,10 +6,11 @@ import { Card } from '@/components/ui/Card'
 import { Badge } from '@/components/ui/Badge'
 import { Button } from '@/components/ui/Button'
 import { formatCredits, formatOdds } from '@/lib/utils/format'
-import type { Bet } from '@/lib/types'
+import { buildPickLabel } from '@/lib/utils/pick-label'
+import type { BetWithMatch } from '@/lib/types'
 
 interface BetCardProps {
-  bet: Bet
+  bet: BetWithMatch
   locked?: boolean
 }
 
@@ -37,14 +38,26 @@ export function BetCard({ bet, locked }: BetCardProps) {
     null
   )
 
+  // Label legible del pick y partido — antes mostrábamos "home", "btts_yes",
+  // etc. que el user no entiende. Ahora pasa a "México gana", "Ambos anotan", etc.
+  const homeName = bet.match?.home_team?.name
+  const awayName = bet.match?.away_team?.name
+  const pickLabel = buildPickLabel(bet.market_type, bet.pick, homeName, awayName)
+  const matchLabel = homeName && awayName ? `${homeName} vs ${awayName}` : null
+
   return (
     <Card className="space-y-2">
-      <div className="flex items-center justify-between">
-        <div>
-          <span className="text-sm text-white font-medium">{bet.pick}</span>
-          <span className="text-xs text-slate-500 ml-2">x{formatOdds(bet.odds_at_placement)}</span>
+      <div className="flex items-center justify-between gap-2">
+        <div className="min-w-0">
+          <p className="text-sm text-white font-semibold truncate">{pickLabel}</p>
+          {matchLabel && (
+            <p className="text-xs text-slate-400 truncate">{matchLabel}</p>
+          )}
         </div>
-        <Badge variant={status.variant}>{status.label}</Badge>
+        <div className="flex items-center gap-2 shrink-0">
+          <span className="text-xs text-slate-500 font-mono">x{formatOdds(bet.odds_at_placement)}</span>
+          <Badge variant={status.variant}>{status.label}</Badge>
+        </div>
       </div>
 
       <div className="flex items-center justify-between text-sm">
