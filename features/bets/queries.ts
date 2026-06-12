@@ -90,6 +90,32 @@ export async function getUserParlays(userId: string, limit = 50, offset = 0): Pr
 }
 
 // ==========================================================
+// Stats globales de la plataforma — widget "Pulso del Mundial" en el hero
+// de la home. Total acumulado + del día (24h).
+// ==========================================================
+export interface PulseStats {
+  pozoTotal: number       // Stakes históricos (bets + parlays) — todo lo apostado siempre
+  pozoEnJuego: number     // Stakes pending — plata corriendo riesgo ahora
+  pagadoHoy: number       // Wins acreditados a winners en últimas 24h
+  perdidoHoy: number      // Stakes de bets perdidas en últimas 24h
+}
+
+export async function getPulseStats(): Promise<PulseStats> {
+  const admin = createAdminClient()
+  // RPC SQL hace los 4 SUM en una sola query, atómico y sin riesgo de
+  // truncamiento del SDK (1000 rows default).
+  const { data } = await admin.rpc('pulse_stats').single()
+  type Row = { pozo_total: number; pozo_en_juego: number; pagado_hoy: number; perdido_hoy: number }
+  const d = data as Row | null
+  return {
+    pozoTotal: Math.round(Number(d?.pozo_total ?? 0)),
+    pozoEnJuego: Math.round(Number(d?.pozo_en_juego ?? 0)),
+    pagadoHoy: Math.round(Number(d?.pagado_hoy ?? 0)),
+    perdidoHoy: Math.round(Number(d?.perdido_hoy ?? 0)),
+  }
+}
+
+// ==========================================================
 // Best Bet of the day — used in the left sidebar widget.
 // Returns null if no pending bet was placed today (no mock fallback).
 // ==========================================================
