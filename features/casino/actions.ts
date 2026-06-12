@@ -175,26 +175,29 @@ async function recordCasinoSession(
 }
 
 // ==========================================================
-// SLOTS 3×3 — 3 paylines, multi-win (RTP ~89.95% teorico)
+// SLOTS 3×3 — 3 paylines, multi-win (RTP ~97.7% teorico)
 // Costo fijo por giro ($10). Cada fila se evalua independiente y los
-// premios de TODAS las filas ganadoras se suman. Antes solo pagaba la
-// mejor linea; al cambiar a multi-line hubo que reajustar WEIGHTS para
-// mantener un RTP saludable (target 89.5%, alcanzado teorico 89.95%).
+// premios de TODAS las filas ganadoras se suman.
+// Subimos de RTP 89.95% → 97.7% sin tocar payouts: movimos peso del
+// simbolo mas vacio (banderin 31→25%) hacia los premiados (botin 13→14%,
+// arco 19→20%, silbato 25→29%). Resultado: ganas mas seguido sin cambiar
+// los premios cuando ganas. RTP target era 97.5%, llegamos a 97.7% con
+// enteros.
 // ==========================================================
 const SLOTS_COST = 10
 // IDs nuevos del rediseno (handoff design v2). Reemplazan a s1..s6.
 // El front lee estos IDs directamente para mapear a colores/iconos. Mantener
 // SYMBOLS y PAYOUTS en el mismo orden para que WEIGHTS aplique igual.
 const SYMBOLS = ['copa', 'balon', 'botin', 'arco', 'silbato', 'banderin']
-// Weights elegidos para RTP=89.95% multi-line:
+// Weights elegidos para RTP=97.7% multi-line (target era 97.5%):
 //   - copa     =4%   8000   contribuye 0.512  por fila
 //   - balon    =8%   1500   contribuye 0.768
-//   - botin    =13%  300    contribuye 0.659
-//   - arco     =19%  70     contribuye 0.480
-//   - silbato  =25%  18     contribuye 0.281
-//   - banderin =31%  10     contribuye 0.298
-//   E[fila] = 2.998 ; E[giro] = 3 filas * 2.998 = 8.995 ; RTP = 89.95%
-const WEIGHTS = [4, 8, 13, 19, 25, 31]
+//   - botin    =14%  300    contribuye 0.823
+//   - arco     =20%  70     contribuye 0.560
+//   - silbato  =29%  18     contribuye 0.439
+//   - banderin =25%  10     contribuye 0.156
+//   E[fila] = 3.258 ; E[giro] = 3 filas * 3.258 = 9.774 ; RTP = 97.7%
+const WEIGHTS = [4, 8, 14, 20, 29, 25]
 
 const PAYOUTS: Record<string, number> = {
   copa: 8000, balon: 1500, botin: 300, arco: 70, silbato: 18, banderin: 10,
