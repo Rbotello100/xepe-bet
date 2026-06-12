@@ -7,7 +7,7 @@ import { TriviaGame } from '@/features/trivia/components/TriviaGame'
 export default async function TriviaPage() {
   const { userId, profile } = await requireAuth()
   const canPlay = await canPlayToday(userId)
-  const questions = canPlay ? await getDailyTrivia(5) : []
+  const questions = canPlay ? await getDailyTrivia(userId, 5) : []
 
   return (
     <>

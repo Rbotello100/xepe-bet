@@ -1,20 +1,23 @@
 import { createServerClient } from '@/lib/supabase/server'
 import type { TriviaQuestion } from './types'
 
-export async function getDailyTrivia(count = 5): Promise<TriviaQuestion[]> {
+/**
+ * Devuelve N preguntas aleatorias para el user, EXCLUYENDO las que ya respondió.
+ * Via RPC `daily_trivia` que hace `ORDER BY random()` en SQL (aleatorio real)
+ * y filtra contra trivia_answers para evitar repetir.
+ *
+ * Antes: `.limit(15)` sin ORDER BY + shuffle JS → siempre las mismas 15 primeras
+ * por PK, repeticiones obvias para el user.
+ */
+export async function getDailyTrivia(userId: string, count = 5): Promise<TriviaQuestion[]> {
   const supabase = await createServerClient()
-
-  // Get random questions -- Supabase doesn't have RANDOM(), so we fetch more and shuffle
-  const { data, error } = await supabase
-    .from('trivia_questions')
-    .select('id, question, options, correct_option, difficulty, category')
-    .limit(count * 3)
+  const { data, error } = await supabase.rpc('daily_trivia', {
+    p_user_id: userId,
+    p_count: count,
+  })
 
   if (error || !data) return []
-
-  // Shuffle and take `count`
-  const shuffled = data.sort(() => Math.random() - 0.5).slice(0, count)
-  return shuffled as TriviaQuestion[]
+  return data as TriviaQuestion[]
 }
 
 export async function canPlayToday(userId: string): Promise<boolean> {
