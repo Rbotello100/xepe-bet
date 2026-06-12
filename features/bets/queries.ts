@@ -142,6 +142,90 @@ export async function getBestBetOfTheDay(): Promise<BestBetData | null> {
 }
 
 // ==========================================================
+// "Peor pifia del día" — la bet LOST con mayor stake en el día.
+// Contrapunto al BestBet: muestra a quien perdió más plata hoy.
+// ==========================================================
+export interface WorstBetData {
+  user: string
+  label: string
+  stake: number
+  odds: number
+  perdio: number
+  matchLabel: string
+}
+
+export async function getWorstBetOfTheDay(): Promise<WorstBetData | null> {
+  const admin = createAdminClient()
+  const todayUtc = new Date(Date.UTC(
+    new Date().getUTCFullYear(), new Date().getUTCMonth(), new Date().getUTCDate(), 0, 0, 0, 0,
+  )).toISOString()
+
+  const { data: bet } = await admin
+    .from('bets')
+    .select(`
+      id, amount, odds_at_placement, pick, market_type, resolved_at,
+      user:profiles!user_id(display_name),
+      match:matches!match_id(home_team:teams!home_team_id(name), away_team:teams!away_team_id(name))
+    `)
+    .eq('status', 'lost')
+    .gte('resolved_at', todayUtc)
+    .order('amount', { ascending: false })
+    .limit(1)
+    .maybeSingle()
+
+  if (!bet) return null
+
+  type MatchedBet = {
+    amount: number
+    odds_at_placement: number
+    pick: string
+    market_type: string | null
+    user: { display_name: string } | { display_name: string }[]
+    match: {
+      home_team: { name: string } | { name: string }[]
+      away_team: { name: string } | { name: string }[]
+    } | null
+  }
+  const b = bet as unknown as MatchedBet
+  const userObj = Array.isArray(b.user) ? b.user[0] : b.user
+  const matchObj = b.match
+  const homeObj = matchObj ? (Array.isArray(matchObj.home_team) ? matchObj.home_team[0] : matchObj.home_team) : null
+  const awayObj = matchObj ? (Array.isArray(matchObj.away_team) ? matchObj.away_team[0] : matchObj.away_team) : null
+  const homeName = homeObj?.name ?? 'Local'
+  const awayName = awayObj?.name ?? 'Visita'
+
+  function pickLabel(market: string | null, pick: string): string {
+    if (!market || market === '1x2') {
+      if (pick === 'home' || pick === '1') return `${homeName} ganaba`
+      if (pick === 'away' || pick === '2') return `${awayName} ganaba`
+      return 'Empate'
+    }
+    if (market === 'double_chance') {
+      if (pick === '1X') return `${homeName} o Empate`
+      if (pick === 'X2') return `Empate o ${awayName}`
+      if (pick === '12') return `${homeName} o ${awayName}`
+    }
+    if (market === 'btts') return pick === 'btts_yes' ? 'Ambos anotaban' : 'Ninguno anotaba'
+    if (market === 'draw_no_bet') return pick === 'dnb_home' ? `${homeName} (sin empate)` : `${awayName} (sin empate)`
+    if (market.startsWith('totals_')) {
+      const pt = market.split('_')[1]
+      if (pick.startsWith('over_')) return `Más de ${pt} goles`
+      if (pick.startsWith('under_')) return `Menos de ${pt} goles`
+    }
+    return pick
+  }
+
+  return {
+    user: userObj?.display_name ?? 'Anonimo',
+    label: pickLabel(b.market_type, b.pick),
+    stake: Number(b.amount),
+    odds: Number(b.odds_at_placement),
+    perdio: Number(b.amount),
+    matchLabel: `${homeName} vs ${awayName}`,
+  }
+}
+
+// ==========================================================
 // Crowd distribution per match (for MatchCard pickbar).
 // Returns map of matchId -> conteos y stakes por bucket 1X2.
 //
