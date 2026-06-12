@@ -36,13 +36,21 @@ export function MiniLeaderboard({
               <span className="w-[22px] text-center font-mono text-sm font-bold text-muted">
                 {rank <= 3 ? MEDALS[rank - 1] : rank}
               </span>
-              <span
-                className={`grid h-[26px] w-[26px] flex-shrink-0 place-items-center rounded-full text-xs font-bold ${
-                  you ? 'bg-accent text-white' : 'border border-card-border bg-sunken text-muted'
-                }`}
-              >
-                {e.display_name[0]}
-              </span>
+              {e.avatar_url ? (
+                <img
+                  src={e.avatar_url}
+                  alt=""
+                  className="h-[26px] w-[26px] flex-shrink-0 rounded-full object-cover"
+                />
+              ) : (
+                <span
+                  className={`grid h-[26px] w-[26px] flex-shrink-0 place-items-center rounded-full text-xs font-bold ${
+                    you ? 'bg-accent text-white' : 'border border-card-border bg-sunken text-muted'
+                  }`}
+                >
+                  {e.display_name[0]}
+                </span>
+              )}
               <span className="flex-1 truncate text-[13.5px] font-semibold text-foreground">
                 {e.display_name}
                 {you && (
