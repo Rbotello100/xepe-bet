@@ -71,32 +71,35 @@ export async function getBiggestWinners(limit = 5): Promise<CasinoStatsRow[]> {
 }
 
 /**
- * Top N ganancias individuales más grandes (1 sola partida).
- * Select directo a casino_sessions con join a profiles.
+ * Top N ganancias individuales más grandes (1 sola partida o 1 sola bet).
+ * Une casino_sessions.win_amount + bets ganadas (potential_payout - amount).
+ * Via RPC SQL para evitar truncamiento del SDK Supabase y para hacer el UNION ALL
+ * en una sola query.
+ *
+ * Antes solo leía de casino_sessions, por lo que las wins de apuestas a partidos
+ * del Mundial NO aparecían y se veía solo gente con $50 de Penales.
  */
 export async function getBiggestSingleWins(limit = 5): Promise<CasinoStatsRow[]> {
   const supabase = await createServerClient()
-  const { data, error } = await supabase
-    .from('casino_sessions')
-    .select('user_id, win_amount, game, profiles!inner(display_name, avatar_url)')
-    .gt('win_amount', 0)
-    .order('win_amount', { ascending: false })
-    .limit(limit)
+  const { data, error } = await supabase.rpc('biggest_single_wins', { p_limit: limit })
 
   if (error || !data) return []
 
-  // El select con foreign relation devuelve profiles como objeto/array según la cardinalidad
-  return data.map((r: Record<string, unknown>) => {
-    const profile = Array.isArray(r.profiles) ? r.profiles[0] : r.profiles
-    const p = profile as { display_name: string; avatar_url: string | null } | undefined
-    return {
-      user_id: r.user_id as string,
-      display_name: p?.display_name ?? 'Anonimo',
-      avatar_url: p?.avatar_url ?? null,
-      value: Number(r.win_amount),
-      meta: r.game as string,
-    }
-  })
+  type Row = {
+    user_id: string
+    display_name: string
+    avatar_url: string | null
+    net_win: number
+    source: string
+  }
+
+  return (data as Row[]).map(r => ({
+    user_id: r.user_id,
+    display_name: r.display_name ?? 'Anonimo',
+    avatar_url: r.avatar_url,
+    value: Number(r.net_win),
+    meta: r.source,
+  }))
 }
 
 /**

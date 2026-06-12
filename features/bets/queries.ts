@@ -84,7 +84,10 @@ export interface BestBetData {
 
 export async function getBestBetOfTheDay(): Promise<BestBetData | null> {
   const admin = createAdminClient()
-  const today = new Date().toISOString().split('T')[0]
+  // Ventana ULTIMAS 24h en vez de "hoy en UTC". Antes con `today UTC` los
+  // partidos jugados de tarde en Chile (UTC-4) que cruzan medianoche UTC
+  // quedaban "ayer" y el widget desaparecia.
+  const cutoff = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString()
 
   const { data: bet } = await admin
     .from('bets')
@@ -94,7 +97,7 @@ export async function getBestBetOfTheDay(): Promise<BestBetData | null> {
       match:matches!match_id(home_team:teams!home_team_id(name), away_team:teams!away_team_id(name))
     `)
     .eq('status', 'pending')
-    .gte('created_at', `${today}T00:00:00`)
+    .gte('created_at', cutoff)
     .order('potential_payout', { ascending: false })
     .limit(1)
     .maybeSingle()
@@ -156,9 +159,9 @@ export interface WorstBetData {
 
 export async function getWorstBetOfTheDay(): Promise<WorstBetData | null> {
   const admin = createAdminClient()
-  const todayUtc = new Date(Date.UTC(
-    new Date().getUTCFullYear(), new Date().getUTCMonth(), new Date().getUTCDate(), 0, 0, 0, 0,
-  )).toISOString()
+  // Ventana ultimas 24h (mismo que BestBet) — evita el bug de TZ donde un
+  // partido jugado tarde en Chile cae en "ayer UTC" y desaparece del widget.
+  const cutoff = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString()
 
   const { data: bet } = await admin
     .from('bets')
@@ -168,7 +171,7 @@ export async function getWorstBetOfTheDay(): Promise<WorstBetData | null> {
       match:matches!match_id(home_team:teams!home_team_id(name), away_team:teams!away_team_id(name))
     `)
     .eq('status', 'lost')
-    .gte('resolved_at', todayUtc)
+    .gte('resolved_at', cutoff)
     .order('amount', { ascending: false })
     .limit(1)
     .maybeSingle()
