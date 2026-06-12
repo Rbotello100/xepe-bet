@@ -6,6 +6,7 @@
 
 export interface WorstBet {
   user: string
+  avatar: string | null
   label: string
   stake: number
   odds: number
@@ -29,7 +30,14 @@ export function WorstBetWidget({ bet }: { bet: WorstBet }) {
         {bet.matchLabel}
       </p>
 
-      <div className="mt-2 flex items-center gap-2.5 text-[13px] text-muted">
+      <div className="mt-2 flex items-center gap-2 text-[13px] text-muted">
+        {bet.avatar ? (
+          <img src={bet.avatar} alt="" className="h-5 w-5 rounded-full object-cover" />
+        ) : (
+          <span className="grid h-5 w-5 place-items-center rounded-full border border-danger/40 bg-danger/10 text-[10px] font-bold text-danger">
+            {bet.user[0]}
+          </span>
+        )}
         <span>
           por <b className="text-foreground">{bet.user}</b>
         </span>

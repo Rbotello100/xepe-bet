@@ -95,6 +95,7 @@ export async function getUserParlays(userId: string, limit = 50, offset = 0): Pr
 // ==========================================================
 export interface BestBetData {
   user: string
+  avatar: string | null
   label: string
   stake: number
   odds: number
@@ -113,7 +114,7 @@ export async function getBestBetOfTheDay(): Promise<BestBetData | null> {
     .from('bets')
     .select(`
       id, amount, odds_at_placement, potential_payout, pick, match_id,
-      user:profiles!user_id(display_name),
+      user:profiles!user_id(display_name, avatar_url),
       match:matches!match_id(home_team:teams!home_team_id(name), away_team:teams!away_team_id(name))
     `)
     .eq('status', 'pending')
@@ -136,7 +137,7 @@ export async function getBestBetOfTheDay(): Promise<BestBetData | null> {
     odds_at_placement: number
     potential_payout: number
     pick: string
-    user: { display_name: string } | { display_name: string }[]
+    user: { display_name: string; avatar_url: string | null } | { display_name: string; avatar_url: string | null }[]
     match: {
       home_team: { name: string } | { name: string }[]
       away_team: { name: string } | { name: string }[]
@@ -156,6 +157,7 @@ export async function getBestBetOfTheDay(): Promise<BestBetData | null> {
 
   return {
     user: userObj?.display_name ?? 'Anonimo',
+    avatar: userObj?.avatar_url ?? null,
     label,
     stake: Number(b.amount),
     odds: Number(b.odds_at_placement),
@@ -170,6 +172,7 @@ export async function getBestBetOfTheDay(): Promise<BestBetData | null> {
 // ==========================================================
 export interface WorstBetData {
   user: string
+  avatar: string | null
   label: string
   stake: number
   odds: number
@@ -187,7 +190,7 @@ export async function getWorstBetOfTheDay(): Promise<WorstBetData | null> {
     .from('bets')
     .select(`
       id, amount, odds_at_placement, pick, market_type, resolved_at,
-      user:profiles!user_id(display_name),
+      user:profiles!user_id(display_name, avatar_url),
       match:matches!match_id(home_team:teams!home_team_id(name), away_team:teams!away_team_id(name))
     `)
     .eq('status', 'lost')
@@ -203,7 +206,7 @@ export async function getWorstBetOfTheDay(): Promise<WorstBetData | null> {
     odds_at_placement: number
     pick: string
     market_type: string | null
-    user: { display_name: string } | { display_name: string }[]
+    user: { display_name: string; avatar_url: string | null } | { display_name: string; avatar_url: string | null }[]
     match: {
       home_team: { name: string } | { name: string }[]
       away_team: { name: string } | { name: string }[]
@@ -240,6 +243,7 @@ export async function getWorstBetOfTheDay(): Promise<WorstBetData | null> {
 
   return {
     user: userObj?.display_name ?? 'Anonimo',
+    avatar: userObj?.avatar_url ?? null,
     label: pickLabel(b.market_type, b.pick),
     stake: Number(b.amount),
     odds: Number(b.odds_at_placement),

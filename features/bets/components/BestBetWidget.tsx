@@ -6,6 +6,7 @@
 
 export interface BestBet {
   user: string
+  avatar: string | null
   label: string   // ej: "Argentina gana + Over 2.5 goles"
   stake: number
   odds: number
@@ -26,7 +27,14 @@ export function BestBetWidget({ bet }: { bet: BestBet }) {
         {bet.label}
       </p>
 
-      <div className="mt-2 flex items-center gap-2.5 text-[13px] text-muted">
+      <div className="mt-2 flex items-center gap-2 text-[13px] text-muted">
+        {bet.avatar ? (
+          <img src={bet.avatar} alt="" className="h-5 w-5 rounded-full object-cover" />
+        ) : (
+          <span className="grid h-5 w-5 place-items-center rounded-full border border-gold/40 bg-gold/10 text-[10px] font-bold text-gold">
+            {bet.user[0]}
+          </span>
+        )}
         <span>
           por <b className="text-foreground">{bet.user}</b>
         </span>
