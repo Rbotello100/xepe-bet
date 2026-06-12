@@ -1,6 +1,7 @@
 import { Card } from '@/components/ui/Card'
 import { Badge } from '@/components/ui/Badge'
 import { formatCredits, formatOdds } from '@/lib/utils/format'
+import { buildPickLabel } from '@/lib/utils/pick-label'
 import type { ParlayWithLegs } from '@/features/bets/queries'
 
 const STATUS_MAP = {
@@ -8,27 +9,6 @@ const STATUS_MAP = {
   won: { label: 'Ganado', variant: 'success' as const },
   lost: { label: 'Perdido', variant: 'danger' as const },
   void: { label: 'Anulado (refund)', variant: 'default' as const },
-}
-
-const PICK_LABELS: Record<string, string> = {
-  home: 'Local',
-  draw: 'Empate',
-  away: 'Visita',
-  btts_yes: 'Ambos marcan: Si',
-  btts_no: 'Ambos marcan: No',
-  '1X': 'Doble oportunidad: 1X',
-  'X2': 'Doble oportunidad: X2',
-  '12': 'Doble oportunidad: 12',
-  dnb_home: 'Sin empate: Local',
-  dnb_away: 'Sin empate: Visita',
-}
-
-function formatPick(pick: string): string {
-  if (PICK_LABELS[pick]) return PICK_LABELS[pick]
-  if (pick.startsWith('over_')) return `Mas de ${pick.replace('over_', '')} goles`
-  if (pick.startsWith('under_')) return `Menos de ${pick.replace('under_', '')} goles`
-  if (pick.startsWith('score_')) return `Marcador: ${pick.replace('score_', '')}`
-  return pick
 }
 
 export function ParlayCard({ parlay }: { parlay: ParlayWithLegs }) {
@@ -48,12 +28,15 @@ export function ParlayCard({ parlay }: { parlay: ParlayWithLegs }) {
         {parlay.legs.map(leg => {
           const home = leg.match?.home_team?.name ?? '?'
           const away = leg.match?.away_team?.name ?? '?'
+          // Label legible con nombre del equipo en vez de "Local"/"Visita".
+          // Mismo helper que usa BetCard.
+          const pickLabel = buildPickLabel(leg.market_type, leg.pick, home, away)
 
           return (
             <div key={leg.id} className="rounded bg-slate-700/50 px-3 py-2">
               <p className="text-xs text-slate-500">{home} vs {away}</p>
               <div className="flex items-center justify-between">
-                <span className="text-sm text-white">{formatPick(leg.pick)}</span>
+                <span className="text-sm text-white">{pickLabel}</span>
                 <div className="flex items-center gap-2">
                   <span className="text-xs text-[var(--casino-yellow)]">x{formatOdds(leg.odds)}</span>
                   {leg.status !== 'pending' && (
