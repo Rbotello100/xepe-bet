@@ -1,4 +1,5 @@
 import { createServerClient } from '@/lib/supabase/server'
+import { createAdminClient } from '@/lib/supabase/admin'
 import type { TriviaQuestion } from './types'
 
 /**
@@ -6,12 +7,12 @@ import type { TriviaQuestion } from './types'
  * Via RPC `daily_trivia` que hace `ORDER BY random()` en SQL (aleatorio real)
  * y filtra contra trivia_answers para evitar repetir.
  *
- * Antes: `.limit(15)` sin ORDER BY + shuffle JS → siempre las mismas 15 primeras
- * por PK, repeticiones obvias para el user.
+ * Usa admin client porque la RPC esta granted solo a service_role (evita que
+ * un user pueda enumerar las respuestas de otros pasando un p_user_id ajeno).
  */
 export async function getDailyTrivia(userId: string, count = 5): Promise<TriviaQuestion[]> {
-  const supabase = await createServerClient()
-  const { data, error } = await supabase.rpc('daily_trivia', {
+  const admin = createAdminClient()
+  const { data, error } = await admin.rpc('daily_trivia', {
     p_user_id: userId,
     p_count: count,
   })
