@@ -120,6 +120,32 @@ export async function getAlerts(): Promise<AlertItem[]> {
     }
   }
 
+  // g) Daily allowance: si despues de las 14 UTC (10 AM Chile) menos del 80%
+  // de los profiles recibio mesada hoy, algo fallo. Tanto el cron de GH
+  // Actions (13:08 UTC) como el de Vercel (13:23 UTC) ya deberian haber corrido.
+  const nowUtcHour = new Date().getUTCHours()
+  if (nowUtcHour >= 14) {
+    const chileDay = new Date(Date.now() - 4 * 60 * 60 * 1000).toISOString().slice(0, 10)
+    const [{ count: paidToday }, { count: totalProfiles }] = await Promise.all([
+      admin
+        .from('credit_transactions')
+        .select('id', { count: 'exact', head: true })
+        .eq('type', 'allowance')
+        .like('reference_id', `allowance-${chileDay}-%`),
+      admin.from('profiles').select('id', { count: 'exact', head: true }),
+    ])
+    const expected = totalProfiles ?? 0
+    const actual = paidToday ?? 0
+    // Tolerancia del 80% (algunos pueden estar capped al maximo balance)
+    if (expected > 0 && actual < expected * 0.8) {
+      alerts.push({
+        severity: 'high',
+        title: 'Mesada diaria no se distribuyo a todos',
+        detail: `Solo ${actual} de ${expected} users recibieron $500 hoy (${Math.round((actual / expected) * 100)}%). Disparar workflow daily-allowance-cron manual.`,
+      })
+    }
+  }
+
   // f) Sync scores cron: si la ultima usage de /scores tiene > 6h y hay
   // matches con score_sync_attempts > 0, hay problema.
   const sixHoursAgo = new Date(Date.now() - 6 * 60 * 60 * 1000).toISOString()

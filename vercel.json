@@ -12,6 +12,14 @@
     {
       "path": "/api/cron/generate-feed",
       "schedule": "0 14 * * *"
+    },
+    {
+      "path": "/api/cron/daily-allowance",
+      "schedule": "23 13 * * *"
+    },
+    {
+      "path": "/api/cron/daily-summary",
+      "schedule": "28 12 * * *"
     }
   ]
 }

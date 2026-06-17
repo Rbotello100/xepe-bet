@@ -1,12 +1,23 @@
 name: Daily allowance cron
 
-# Tira $500 a todos los users una vez al dia.
-# 13:08 UTC = 09:08 AM Chile (UTC-4). Minuto non-round para escapar peak
-# scheduling de GH Actions.
+# Mesada diaria: $500 a TODOS los users.
 #
-# Endpoint: /api/cron/daily-allowance con Bearer CRON_SECRET.
-# Idempotente: reference_id = `allowance-${YYYY-MM-DD}-${userId}` + UNIQUE
-# partial index en credit_transactions → multi-trigger no paga dos veces.
+# 13:08 UTC = 09:08 AM Chile (UTC-4). Minuto non-round (8) para escapar el
+# peak scheduling de GH Actions (los crons "0 X * * *" se delayean mas).
+#
+# Defensa en profundidad:
+# 1. GH Actions corre a 13:08 UTC (PRIMARIO).
+# 2. Vercel cron corre a 13:23 UTC (FALLBACK). Idempotente por reference_id
+#    → si GH Actions ya pago, Vercel no duplica.
+# 3. Este workflow REINTENTA 3 veces con backoff dentro del run si el
+#    endpoint devuelve != 200.
+# 4. workflow_dispatch para disparo manual en caso de emergencia.
+# 5. /admin/observability alerta si despues de 14 UTC menos del 80% recibio.
+#
+# Endpoint: /api/cron/daily-allowance con Bearer CRON_SECRET. Idempotente
+# por reference_id = `allowance-${chileDate}-${userId}` + UNIQUE index en
+# credit_transactions(user_id, type, reference_id) → multi-trigger no
+# paga dos veces.
 
 on:
   schedule:
@@ -16,23 +27,35 @@ on:
 jobs:
   trigger-allowance:
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    timeout-minutes: 10
     steps:
-      - name: Hit daily-allowance endpoint
+      - name: Hit daily-allowance endpoint (con retry)
         env:
           CRON_SECRET: ${{ secrets.CRON_SECRET }}
           SITE_URL: https://xepe-bet.vercel.app
         run: |
           set -e
-          echo "→ Disparando daily-allowance en ${SITE_URL}"
-          STATUS=$(curl -sS -o /tmp/resp.json -w "%{http_code}" \
-            -X POST "${SITE_URL}/api/cron/daily-allowance" \
-            -H "Authorization: Bearer ${CRON_SECRET}" \
-            --max-time 120 || echo "000")
-          echo "HTTP ${STATUS}"
-          cat /tmp/resp.json | head -c 600 || true
-          echo ""
-          if [ "${STATUS}" != "200" ]; then
-            echo "::warning::Cron devolvio HTTP ${STATUS}, revisar el endpoint"
-            exit 1
-          fi
+          MAX_ATTEMPTS=3
+          ATTEMPT=1
+          while [ $ATTEMPT -le $MAX_ATTEMPTS ]; do
+            echo "→ Intento $ATTEMPT/$MAX_ATTEMPTS: disparando daily-allowance"
+            STATUS=$(curl -sS -o /tmp/resp.json -w "%{http_code}" \
+              -X POST "${SITE_URL}/api/cron/daily-allowance" \
+              -H "Authorization: Bearer ${CRON_SECRET}" \
+              --max-time 120 || echo "000")
+            echo "HTTP ${STATUS}"
+            cat /tmp/resp.json | head -c 1500 || true
+            echo ""
+            if [ "${STATUS}" = "200" ]; then
+              echo "✓ OK en intento $ATTEMPT"
+              exit 0
+            fi
+            ATTEMPT=$((ATTEMPT + 1))
+            if [ $ATTEMPT -le $MAX_ATTEMPTS ]; then
+              SLEEP=$((ATTEMPT * 30))
+              echo "Esperando ${SLEEP}s antes del proximo intento..."
+              sleep $SLEEP
+            fi
+          done
+          echo "::error::Cron fallo despues de $MAX_ATTEMPTS intentos. Vercel cron (13:23 UTC) reintentara como fallback."
+          exit 1
