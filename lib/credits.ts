@@ -16,7 +16,7 @@ import { logError } from '@/lib/log/error'
  * total por user.
  */
 
-type TransactionType = 'signup' | 'bet' | 'win' | 'cash_out' | 'trivia' | 'parlay' | 'refund' | 'casino_bet' | 'casino_win'
+type TransactionType = 'signup' | 'bet' | 'win' | 'cash_out' | 'trivia' | 'parlay' | 'refund' | 'casino_bet' | 'casino_win' | 'allowance'
 
 interface CreditResult {
   success: boolean

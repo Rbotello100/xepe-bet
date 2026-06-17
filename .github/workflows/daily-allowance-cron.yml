@@ -1,0 +1,38 @@
+name: Daily allowance cron
+
+# Tira $500 a todos los users una vez al dia.
+# 13:08 UTC = 09:08 AM Chile (UTC-4). Minuto non-round para escapar peak
+# scheduling de GH Actions.
+#
+# Endpoint: /api/cron/daily-allowance con Bearer CRON_SECRET.
+# Idempotente: reference_id = `allowance-${YYYY-MM-DD}-${userId}` + UNIQUE
+# partial index en credit_transactions → multi-trigger no paga dos veces.
+
+on:
+  schedule:
+    - cron: "8 13 * * *"
+  workflow_dispatch: {}
+
+jobs:
+  trigger-allowance:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Hit daily-allowance endpoint
+        env:
+          CRON_SECRET: ${{ secrets.CRON_SECRET }}
+          SITE_URL: https://xepe-bet.vercel.app
+        run: |
+          set -e
+          echo "→ Disparando daily-allowance en ${SITE_URL}"
+          STATUS=$(curl -sS -o /tmp/resp.json -w "%{http_code}" \
+            -X POST "${SITE_URL}/api/cron/daily-allowance" \
+            -H "Authorization: Bearer ${CRON_SECRET}" \
+            --max-time 120 || echo "000")
+          echo "HTTP ${STATUS}"
+          cat /tmp/resp.json | head -c 600 || true
+          echo ""
+          if [ "${STATUS}" != "200" ]; then
+            echo "::warning::Cron devolvio HTTP ${STATUS}, revisar el endpoint"
+            exit 1
+          fi

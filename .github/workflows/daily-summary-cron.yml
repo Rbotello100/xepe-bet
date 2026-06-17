@@ -1,0 +1,37 @@
+name: Daily summary cron
+
+# Genera el resumen del dia anterior (Chile) y lo guarda en daily_summaries.
+# 12:13 UTC = 08:13 AM Chile (UTC-4). Llega antes que la mesada para que
+# cuando el admin abra el panel ya tenga el mensaje del dia previo listo.
+#
+# Endpoint: /api/cron/daily-summary con Bearer CRON_SECRET.
+# Idempotente via UPSERT en daily_summaries (UNIQUE(day)).
+
+on:
+  schedule:
+    - cron: "13 12 * * *"
+  workflow_dispatch: {}
+
+jobs:
+  trigger-summary:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Hit daily-summary endpoint
+        env:
+          CRON_SECRET: ${{ secrets.CRON_SECRET }}
+          SITE_URL: https://xepe-bet.vercel.app
+        run: |
+          set -e
+          echo "→ Disparando daily-summary en ${SITE_URL}"
+          STATUS=$(curl -sS -o /tmp/resp.json -w "%{http_code}" \
+            -X POST "${SITE_URL}/api/cron/daily-summary" \
+            -H "Authorization: Bearer ${CRON_SECRET}" \
+            --max-time 120 || echo "000")
+          echo "HTTP ${STATUS}"
+          cat /tmp/resp.json | head -c 600 || true
+          echo ""
+          if [ "${STATUS}" != "200" ]; then
+            echo "::warning::Cron devolvio HTTP ${STATUS}, revisar el endpoint"
+            exit 1
+          fi
