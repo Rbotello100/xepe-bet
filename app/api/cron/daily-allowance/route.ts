@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto'
 import { NextResponse } from 'next/server'
 import { verifyCronAuth } from '@/lib/auth/cron'
 import { createAdminClient } from '@/lib/supabase/admin'
@@ -52,6 +53,29 @@ function chileDate(): string {
   return new Date(Date.now() - 4 * 60 * 60 * 1000).toISOString().slice(0, 10)
 }
 
+function chileDayRange(): { start: string; end: string } {
+  // Inicio del dia Chile (00:00 CL) = ese dia a las 04:00 UTC.
+  const today = chileDate()
+  const start = `${today}T04:00:00.000Z`
+  const end = new Date(new Date(start).getTime() + 24 * 60 * 60 * 1000).toISOString()
+  return { start, end }
+}
+
+/**
+ * UUID deterministico desde un string. Necesario porque credit_transactions.reference_id
+ * es columna UUID — no acepta texto plano. SHA-256 trunca a 32 chars hex y se
+ * formatea como UUID 8-4-4-4-12. Mismo input → mismo UUID, garantizando
+ * idempotencia via UNIQUE partial index.
+ */
+function uuidFromString(input: string): string {
+  const h = createHash('sha256').update(input).digest('hex').slice(0, 32)
+  return `${h.slice(0, 8)}-${h.slice(8, 12)}-${h.slice(12, 16)}-${h.slice(16, 20)}-${h.slice(20, 32)}`
+}
+
+function allowanceRefId(day: string, userId: string): string {
+  return uuidFromString(`allowance-${day}-${userId}`)
+}
+
 function isCapError(error: string | undefined): boolean {
   if (!error) return false
   const e = error.toLowerCase()
@@ -101,8 +125,10 @@ async function handler(request: Request) {
   }
 
   // ----- 2. Pre-fetch existing allowance tx para hoy -----
-  // Una sola query: trae todos los reference_id ya pagados hoy → set en memoria.
-  // Beneficio: evitamos 165 idempotency checks individuales dentro de addCredits.
+  // Una sola query por dia Chile (rango created_at): trae todos los users
+  // ya pagados → set en memoria. Filtramos por rango temporal porque
+  // reference_id es UUID (no podemos LIKE).
+  const { start: dayStart, end: dayEnd } = chileDayRange()
   const alreadyPaid = new Set<string>()
   let offset2 = 0
   while (true) {
@@ -110,7 +136,8 @@ async function handler(request: Request) {
       .from('credit_transactions')
       .select('user_id')
       .eq('type', 'allowance')
-      .like('reference_id', `allowance-${day}-%`)
+      .gte('created_at', dayStart)
+      .lt('created_at', dayEnd)
       .range(offset2, offset2 + 999)
     if (error) {
       void logError('daily-allowance.preFetch', error, { day }, 'error')
@@ -145,7 +172,7 @@ async function handler(request: Request) {
 
     const batch = needsPay.slice(i, i + BATCH_SIZE)
     const results = await Promise.all(
-      batch.map(p => payOneWithRetry(p.id, `allowance-${day}-${p.id}`).then(r => ({ id: p.id, ...r })))
+      batch.map(p => payOneWithRetry(p.id, allowanceRefId(day, p.id)).then(r => ({ id: p.id, ...r })))
     )
     for (const r of results) {
       if (r.status === 'paid') counts.paid++

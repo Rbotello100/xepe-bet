@@ -126,12 +126,17 @@ export async function getAlerts(): Promise<AlertItem[]> {
   const nowUtcHour = new Date().getUTCHours()
   if (nowUtcHour >= 14) {
     const chileDay = new Date(Date.now() - 4 * 60 * 60 * 1000).toISOString().slice(0, 10)
+    // Filtramos por rango created_at del dia Chile (00:00 CL = 04:00 UTC)
+    // porque reference_id es UUID — no podemos hacer LIKE de prefijo texto.
+    const dayStart = `${chileDay}T04:00:00.000Z`
+    const dayEnd = new Date(new Date(dayStart).getTime() + 24 * 60 * 60 * 1000).toISOString()
     const [{ count: paidToday }, { count: totalProfiles }] = await Promise.all([
       admin
         .from('credit_transactions')
         .select('id', { count: 'exact', head: true })
         .eq('type', 'allowance')
-        .like('reference_id', `allowance-${chileDay}-%`),
+        .gte('created_at', dayStart)
+        .lt('created_at', dayEnd),
       admin.from('profiles').select('id', { count: 'exact', head: true }),
     ])
     const expected = totalProfiles ?? 0
