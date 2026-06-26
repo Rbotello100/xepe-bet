@@ -40,7 +40,7 @@ export function ChampionPicker({ market, outcomes, userCredits }: Props) {
         if (res.error) {
           toast.error(res.error)
         } else {
-          toast.success(`¡Apuesta colocada! Ganás $${res.potential_payout?.toLocaleString('es-CL')} si ${selected.team_name} sale campeón`)
+          toast.success(`Apuesta colocada · ${selected.team_name} · gana $${res.potential_payout?.toLocaleString('es-CL')}`)
           setSelected(null)
           setAmount('')
         }
@@ -52,43 +52,45 @@ export function ChampionPicker({ market, outcomes, userCredits }: Props) {
 
   if (outcomes.length === 0) {
     return (
-      <div className="rounded-xl border border-card-border bg-card p-8 text-center">
-        <p className="text-3xl">⏳</p>
-        <p className="mt-2 text-sm font-medium text-strong">Las cuotas están en camino</p>
-        <p className="mt-1 text-xs text-muted">El cron va a poblar los equipos en las próximas horas</p>
+      <div className="rounded-xl border border-card-border bg-card p-5 text-center">
+        <p className="text-2xl">⏳</p>
+        <p className="mt-1.5 text-xs text-muted">Cuotas en camino — refrescá en un rato</p>
       </div>
     )
   }
 
   if (market.status === 'settled') {
     return (
-      <div className="rounded-xl border border-card-border bg-[linear-gradient(135deg,color-mix(in_oklab,var(--color-win)_20%,var(--color-card)),var(--color-card))] p-8 text-center">
-        <p className="text-5xl">🏆</p>
-        <p className="mt-2 text-lg font-bold text-strong">Campeón Mundial 2026</p>
-        <p className="mt-1 text-2xl font-extrabold text-win">{market.winner_team}</p>
+      <div className="rounded-xl border border-card-border bg-[linear-gradient(135deg,color-mix(in_oklab,var(--color-win)_20%,var(--color-card)),var(--color-card))] p-5 text-center">
+        <p className="text-3xl">🏆</p>
+        <p className="mt-1 text-xs uppercase tracking-wider text-subtle">Campeón</p>
+        <p className="text-xl font-extrabold text-win">{market.winner_team}</p>
       </div>
     )
   }
 
   return (
-    <div className="space-y-4">
-      <div className="rounded-xl border border-card-border bg-card p-4">
-        <div className="flex items-center justify-between">
-          <h2 className="font-bold text-strong">{market.market_name}</h2>
+    <div className="space-y-3">
+      {/* Header compacto inline con estado */}
+      <div className="flex items-center justify-between rounded-lg border border-card-border bg-card px-3.5 py-2">
+        <div className="flex items-center gap-2">
           {isClosed ? (
             <span className="rounded-full bg-danger/15 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-danger">Cerrado</span>
           ) : (
-            <span className="rounded-full bg-win/15 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-win">Abierto</span>
+            <span className="flex items-center gap-1.5 rounded-full bg-win/15 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-win">
+              <span className="h-1.5 w-1.5 rounded-full bg-win" style={{ animation: 'live-pulse 1.8s infinite' }} />
+              Abierto
+            </span>
           )}
+          <span className="text-[11px] text-muted">
+            {isClosed ? 'Esperando la final' : `Cierra ${new Date(market.closes_at).toLocaleDateString('es-CL', { day: 'numeric', month: 'short' })}`}
+          </span>
         </div>
-        <p className="mt-1 text-xs text-muted">
-          {isClosed
-            ? 'No se aceptan más apuestas. Esperando la final.'
-            : `Cierra el ${new Date(market.closes_at).toLocaleDateString('es-CL', { day: 'numeric', month: 'long' })} (inicio de octavos)`}
-        </p>
+        <span className="text-[10px] text-subtle">{outcomes.length} equipos</span>
       </div>
 
-      <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-4">
+      {/* Grid denso: ~6 columnas en desktop, scroll vertical */}
+      <div className="grid grid-cols-2 gap-1.5 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5">
         {outcomes.map(o => {
           const isSelected = selected?.team_name === o.team_name
           return (
@@ -96,32 +98,27 @@ export function ChampionPicker({ market, outcomes, userCredits }: Props) {
               key={o.id}
               onClick={() => setSelected(isSelected ? null : o)}
               disabled={isClosed}
-              className={`flex flex-col items-start rounded-lg border p-3 text-left transition-colors disabled:cursor-not-allowed disabled:opacity-50 ${
+              className={`flex items-center justify-between rounded-md border px-2.5 py-1.5 text-left transition-colors disabled:cursor-not-allowed disabled:opacity-50 ${
                 isSelected
-                  ? 'border-accent bg-accent/15 ring-2 ring-accent'
+                  ? 'border-accent bg-accent/15 ring-1 ring-accent'
                   : 'border-card-border bg-card hover:bg-sunken'
               }`}
             >
-              <span className="text-xs font-semibold text-strong">{o.team_name}</span>
-              <span className="mt-1 font-mono text-lg font-bold text-accent-deep">x{o.odds.toFixed(2)}</span>
+              <span className="truncate text-xs font-medium text-strong">{o.team_name}</span>
+              <span className="ml-2 font-mono text-xs font-bold text-accent-deep">x{o.odds.toFixed(2)}</span>
             </button>
           )
         })}
       </div>
 
+      {/* Bet builder sticky compacto */}
       {selected && !isClosed && (
-        <div className="sticky bottom-4 rounded-xl border border-accent bg-card p-4 shadow-2xl">
-          <div className="mb-3 flex items-center justify-between">
-            <div>
-              <p className="text-xs uppercase tracking-wider text-subtle">Apostando a</p>
-              <p className="font-bold text-strong">{selected.team_name}</p>
+        <div className="sticky bottom-3 rounded-lg border border-accent bg-card p-3 shadow-2xl">
+          <div className="flex items-center gap-2">
+            <div className="flex-1 min-w-0">
+              <p className="truncate text-xs font-bold text-strong">{selected.team_name}</p>
+              <p className="font-mono text-[11px] text-accent-deep">x{selected.odds.toFixed(2)}</p>
             </div>
-            <div className="text-right">
-              <p className="text-xs uppercase tracking-wider text-subtle">Cuota</p>
-              <p className="font-mono text-lg font-bold text-accent-deep">x{selected.odds.toFixed(2)}</p>
-            </div>
-          </div>
-          <div className="flex gap-2">
             <input
               type="number"
               inputMode="decimal"
@@ -129,20 +126,27 @@ export function ChampionPicker({ market, outcomes, userCredits }: Props) {
               max={userCredits}
               value={amount}
               onChange={e => setAmount(e.target.value)}
-              placeholder="Monto"
-              className="flex-1 rounded-md border border-card-border bg-sunken px-3 py-2 text-sm text-strong placeholder:text-subtle focus:outline-none focus:ring-2 focus:ring-accent"
+              placeholder="$"
+              className="w-20 rounded-md border border-card-border bg-sunken px-2 py-1.5 text-sm text-strong placeholder:text-subtle focus:outline-none focus:ring-1 focus:ring-accent"
             />
             <button
               onClick={handlePlace}
               disabled={isPending || numAmount < MIN_BET || numAmount > userCredits}
-              className="rounded-md bg-accent px-4 py-2 text-sm font-bold text-slate-900 hover:bg-accent-hover disabled:cursor-not-allowed disabled:opacity-50"
+              className="rounded-md bg-accent px-3 py-1.5 text-xs font-bold text-slate-900 hover:bg-accent-hover disabled:cursor-not-allowed disabled:opacity-50"
             >
-              {isPending ? 'Apostando…' : 'Apostar'}
+              {isPending ? '…' : 'Apostar'}
+            </button>
+            <button
+              onClick={() => { setSelected(null); setAmount('') }}
+              className="rounded-md border border-card-border px-2 py-1.5 text-xs text-muted hover:bg-sunken"
+              aria-label="Cancelar"
+            >
+              ✕
             </button>
           </div>
           {numAmount >= MIN_BET && (
-            <p className="mt-2 text-xs text-muted">
-              Premio potencial: <span className="font-mono font-bold text-win">${potential.toLocaleString('es-CL')}</span>
+            <p className="mt-1.5 text-[10px] text-muted">
+              Premio: <span className="font-mono font-bold text-win">${potential.toLocaleString('es-CL')}</span>
             </p>
           )}
         </div>

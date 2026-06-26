@@ -51,6 +51,51 @@ export async function getChampionMarket(): Promise<{ market: OutrightMarket | nu
   return { market, outcomes: (outcomes ?? []).map(o => ({ ...o, odds: Number(o.odds) })) as OutrightOutcome[] }
 }
 
+export interface PublicOutrightBet {
+  user_id: string
+  display_name: string
+  avatar_url: string | null
+  team_name: string
+  amount: number
+  odds_at_placement: number
+  created_at: string
+}
+
+/**
+ * Devuelve TODAS las bets de outright (ultimas 50) con info publica del user
+ * (nombre + avatar). Sin amount aleatorizado — mostramos $apostado para
+ * generar FOMO y conversacion.
+ */
+export async function getRecentChampionBets(limit = 50): Promise<PublicOutrightBet[]> {
+  const admin = createAdminClient()
+  const { data } = await admin
+    .from('outright_bets')
+    .select('user_id, team_name, amount, odds_at_placement, created_at')
+    .order('created_at', { ascending: false })
+    .limit(limit)
+  if (!data?.length) return []
+
+  const userIds = [...new Set(data.map(b => b.user_id))]
+  const { data: profs } = await admin
+    .from('profiles')
+    .select('id, display_name, avatar_url')
+    .in('id', userIds)
+  const profById = new Map((profs ?? []).map(p => [p.id, p]))
+
+  return data.map(b => {
+    const p = profById.get(b.user_id)
+    return {
+      user_id: b.user_id,
+      display_name: p?.display_name ?? 'Anónimo',
+      avatar_url: p?.avatar_url ?? null,
+      team_name: b.team_name,
+      amount: Number(b.amount),
+      odds_at_placement: Number(b.odds_at_placement),
+      created_at: b.created_at,
+    }
+  })
+}
+
 /**
  * Devuelve outright_bets de un user con join al market_name para mostrar
  * en /bets. Ordenado por created_at desc.
