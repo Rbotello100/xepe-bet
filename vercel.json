@@ -20,6 +20,10 @@
     {
       "path": "/api/cron/daily-summary",
       "schedule": "28 12 * * *"
+    },
+    {
+      "path": "/api/cron/sync-outright",
+      "schedule": "47 9 * * *"
     }
   ]
 }

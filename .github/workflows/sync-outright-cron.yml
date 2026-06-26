@@ -1,0 +1,37 @@
+name: Sync outright cron
+
+# Sincroniza odds del Campeon Mundial + auto-detect settlement post-final.
+# 2x/dia para mantener cuotas frescas y captar el momento del settlement
+# rapido. Costo: 2 creditos por run x 2 = 4/dia x 30 = 120/mes. Ultra barato.
+#
+# Endpoint: /api/cron/sync-outright con Bearer CRON_SECRET. Idempotente.
+
+on:
+  schedule:
+    - cron: "37 9 * * *"    # 05:37 AM Chile
+    - cron: "37 21 * * *"   # 17:37 PM Chile (post-partidos del dia)
+  workflow_dispatch: {}
+
+jobs:
+  trigger-sync:
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - name: Hit sync-outright endpoint
+        env:
+          CRON_SECRET: ${{ secrets.CRON_SECRET }}
+          SITE_URL: https://xepe-bet.vercel.app
+        run: |
+          set -e
+          echo "→ Disparando sync-outright en ${SITE_URL}"
+          STATUS=$(curl -sS -o /tmp/resp.json -w "%{http_code}" \
+            -X POST "${SITE_URL}/api/cron/sync-outright" \
+            -H "Authorization: Bearer ${CRON_SECRET}" \
+            --max-time 60 || echo "000")
+          echo "HTTP ${STATUS}"
+          cat /tmp/resp.json | head -c 600 || true
+          echo ""
+          if [ "${STATUS}" != "200" ]; then
+            echo "::warning::Cron devolvio HTTP ${STATUS}"
+            exit 1
+          fi
