@@ -8,7 +8,7 @@ const STATUS_MAP = {
   pending: { label: 'Pendiente', variant: 'warning' as const },
   won: { label: 'Ganado', variant: 'success' as const },
   lost: { label: 'Perdido', variant: 'danger' as const },
-  void: { label: 'Anulado (refund)', variant: 'default' as const },
+  void: { label: 'Reembolsado', variant: 'info' as const },
 }
 
 export function ParlayCard({ parlay }: { parlay: ParlayWithLegs }) {
@@ -53,7 +53,11 @@ export function ParlayCard({ parlay }: { parlay: ParlayWithLegs }) {
 
       <div className="flex items-center justify-between text-sm border-t border-slate-700 pt-2">
         <span className="text-slate-400">Apostado: {formatCredits(parlay.amount)}</span>
-        <span className="text-[var(--casino-yellow)] font-semibold">Potencial: {formatCredits(parlay.potential_payout)}</span>
+        <span className={parlay.status === 'void' ? 'text-emerald-400 font-semibold' : 'text-[var(--casino-yellow)] font-semibold'}>
+          {parlay.status === 'void'
+            ? `Reembolso: +${formatCredits(parlay.amount)}`
+            : `Potencial: ${formatCredits(parlay.potential_payout)}`}
+        </span>
       </div>
     </Card>
   )

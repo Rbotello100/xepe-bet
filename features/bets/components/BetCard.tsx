@@ -18,7 +18,7 @@ const STATUS_MAP = {
   pending: { label: 'Pendiente', variant: 'warning' as const },
   won: { label: 'Ganada', variant: 'success' as const },
   lost: { label: 'Perdida', variant: 'danger' as const },
-  cancelled: { label: 'Cancelada', variant: 'default' as const },
+  cancelled: { label: 'Reembolsada', variant: 'info' as const },
   cashed_out: { label: 'Cash Out', variant: 'info' as const },
 }
 
@@ -62,9 +62,11 @@ export function BetCard({ bet, locked }: BetCardProps) {
 
       <div className="flex items-center justify-between text-sm">
         <span className="text-slate-400">Apostado: {formatCredits(bet.amount)}</span>
-        <span className="text-[var(--casino-yellow)]">
+        <span className={bet.status === 'cancelled' ? 'text-emerald-400' : 'text-[var(--casino-yellow)]'}>
           {bet.status === 'cashed_out'
             ? `Cash out: ${formatCredits(bet.cash_out_amount!)}`
+            : bet.status === 'cancelled'
+            ? `Reembolso: +${formatCredits(bet.amount)}`
             : `Potencial: ${formatCredits(bet.potential_payout)}`
           }
         </span>
