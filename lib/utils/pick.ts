@@ -78,6 +78,37 @@ export function evaluatePick(
       return 'lost'
     }
 
+    case 'spreads_1.5':
+    case 'spreads_2.5':
+    case 'spreads_3.5': {
+      // Spreads (Handicap): el favorito tiene handicap negativo, debe ganar
+      // por +X.5 goles. El underdog tiene handicap positivo, no debe perder
+      // por X.5 o mas. Como X.5 es decimal, NO hay push (empate de spread).
+      //
+      // Ej. 'home_-1.5': home_score - away_score > 1.5  →  ganó el spread
+      // Ej. 'away_+1.5': away_score + 1.5 > home_score  →  ganó el spread
+      //
+      // El pick incluye el signo y el threshold, asi no necesitamos columna
+      // adicional `point_at_placement` en bets — todo derivable del pick.
+      const m = (pick as string).match(/^(home|away)_([+-])(\d+\.\d+)$/)
+      if (!m) return 'lost'
+      const side = m[1]
+      const sign = m[2] === '-' ? -1 : 1
+      const threshold = Number(m[3])
+      if (!Number.isFinite(threshold)) return 'lost'
+      // Coherencia: pick debe matchear el market threshold (defense in depth)
+      const marketThreshold = Number(market_type.split('_')[1])
+      if (threshold !== marketThreshold) return 'lost'
+      // Aplicamos el handicap al equipo elegido y comparamos con el rival
+      if (side === 'home') {
+        const adjusted = home_score + sign * threshold
+        return adjusted > away_score ? 'won' : 'lost'
+      } else {
+        const adjusted = away_score + sign * threshold
+        return adjusted > home_score ? 'won' : 'lost'
+      }
+    }
+
     case 'totals_1.5':
     case 'totals_2.5':
     case 'totals_3.5': {

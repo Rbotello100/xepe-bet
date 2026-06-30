@@ -3,7 +3,7 @@ import { createAdminClient } from '@/lib/supabase/admin'
 import { getMatchesNeedingOdds, getMatchesForOddsRefresh } from './scheduler'
 import { logOddsApiUsage } from '@/lib/odds-api/usage'
 
-const EXTRA_MARKETS = ['btts', 'double_chance', 'draw_no_bet', 'alternate_totals']
+const EXTRA_MARKETS = ['btts', 'double_chance', 'draw_no_bet', 'alternate_totals', 'alternate_spreads']
 type ExtraTriggeredBy = 'cron' | 'admin_manual' | 'test'
 
 /**
@@ -65,7 +65,7 @@ async function syncExtraMarketsForMatch(
     }
     return null
   }
-  const marketsToProcess = (['btts', 'double_chance', 'draw_no_bet', 'alternate_totals', 'totals'] as const)
+  const marketsToProcess = (['btts', 'double_chance', 'draw_no_bet', 'alternate_totals', 'totals', 'alternate_spreads', 'spreads'] as const)
     .map(k => collectMarket(k))
     .filter((m): m is NonNullable<typeof m> => Boolean(m))
 
@@ -121,6 +121,32 @@ async function syncExtraMarketsForMatch(
         const market_type = 'totals_' + pStr
         if (o.name === 'Over') rows.push({ match_id: matchId, market_type, pick: `over_${pStr}`, odds: price, point })
         else if (o.name === 'Under') rows.push({ match_id: matchId, market_type, pick: `under_${pStr}`, odds: price, point })
+      }
+    } else if (m.key === 'alternate_spreads' || m.key === 'spreads') {
+      // Spreads: outcomes vienen como {name: <team name>, point: ±X.5, price: <odd>}.
+      // Filtramos a thresholds ±1.5, ±2.5, ±3.5 (medios goles → no hay push).
+      // Mapeamos team name → 'home' / 'away'. El pick lleva el signo encoded:
+      //   {name: 'Brazil', point: -1.5, price: 1.85}  → pick='home_-1.5' (si Brazil es home)
+      // El evaluatePick deriva la regla del pick sin necesitar otra columna.
+      const allowedSpreadAbs = new Set([1.5, 2.5, 3.5])
+      for (const o of m.outcomes) {
+        const point = o.point
+        if (point == null) continue
+        const abs = Math.abs(point)
+        if (!allowedSpreadAbs.has(abs)) continue
+        const price = sanity(o.price)
+        if (price == null) continue
+        const side = o.name === homeTeam ? 'home' : o.name === awayTeam ? 'away' : null
+        if (!side) continue
+        const sign = point < 0 ? '-' : '+'
+        const absStr = String(abs)
+        rows.push({
+          match_id: matchId,
+          market_type: `spreads_${absStr}`,
+          pick: `${side}_${sign}${absStr}`,
+          odds: price,
+          point,
+        })
       }
     }
   }

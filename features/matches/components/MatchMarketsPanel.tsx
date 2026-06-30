@@ -38,6 +38,9 @@ const MARKET_ORDER: Array<{ market_type: string; label: string }> = [
   { market_type: 'totals_2.5',    label: 'Más/Menos 2.5' },
   { market_type: 'totals_1.5',    label: 'Más/Menos 1.5' },
   { market_type: 'totals_3.5',    label: 'Más/Menos 3.5' },
+  { market_type: 'spreads_1.5',   label: 'Handicap 1.5' },
+  { market_type: 'spreads_2.5',   label: 'Handicap 2.5' },
+  { market_type: 'spreads_3.5',   label: 'Handicap 3.5' },
 ]
 
 /**
@@ -99,6 +102,15 @@ function pickLabel(market_type: string, pick: string, match: MatchWithTeams): st
       if (pick.startsWith('over_')) return `Más de ${point}`
       if (pick.startsWith('under_')) return `Menos de ${point}`
       return pick
+    }
+    case 'spreads_1.5':
+    case 'spreads_2.5':
+    case 'spreads_3.5': {
+      // pick: 'home_-1.5' / 'home_+1.5' / 'away_-1.5' / 'away_+1.5'
+      const m = pick.match(/^(home|away)_([+-]\d+\.\d+)$/)
+      if (!m) return pick
+      const team = m[1] === 'home' ? match.home_team.name : match.away_team.name
+      return `${team} ${m[2]}`
     }
     default:
       return pick

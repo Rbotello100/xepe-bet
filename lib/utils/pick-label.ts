@@ -43,6 +43,16 @@ export function buildPickLabel(
       if (pick.startsWith('under_')) return `Menos de ${point} goles`
       return pick
     }
+    case 'spreads_1.5':
+    case 'spreads_2.5':
+    case 'spreads_3.5': {
+      // pick formato: 'home_-1.5', 'home_+1.5', 'away_-1.5', 'away_+1.5', etc.
+      // -X.5 = favorito (debe ganar por X+1), +X.5 = underdog (con ventaja)
+      const m = pick.match(/^(home|away)_([+-]\d+\.\d+)$/)
+      if (!m) return pick
+      const team = m[1] === 'home' ? home : away
+      return `${team} ${m[2]}`
+    }
     default:
       return pick
   }

@@ -27,6 +27,12 @@ export const VALID_PICKS = [
   'over_1.5', 'under_1.5',
   'over_2.5', 'under_2.5',
   'over_3.5', 'under_3.5',
+  // Spreads (Handicap). El signo va incluido en el pick para que evaluatePick
+  // pueda derivar la regla sin necesitar columna `point_at_placement` en bets.
+  // 'home_-1.5' = local gana por 2+. 'away_+1.5' = visita no pierde por 2+.
+  'home_-1.5', 'home_+1.5', 'away_-1.5', 'away_+1.5',
+  'home_-2.5', 'home_+2.5', 'away_-2.5', 'away_+2.5',
+  'home_-3.5', 'home_+3.5', 'away_-3.5', 'away_+3.5',
 ] as const
 export type BetPick = typeof VALID_PICKS[number]
 export function isValidPick(p: unknown): p is BetPick {
@@ -43,6 +49,9 @@ export const VALID_MARKETS = [
   'totals_1.5',
   'totals_2.5',
   'totals_3.5',
+  'spreads_1.5',
+  'spreads_2.5',
+  'spreads_3.5',
 ] as const
 export type BetMarket = typeof VALID_MARKETS[number]
 export function isValidMarket(m: unknown): m is BetMarket {
@@ -61,6 +70,9 @@ export const PICK_TO_MARKET: Record<BetPick, BetMarket> = {
   'over_1.5': 'totals_1.5', 'under_1.5': 'totals_1.5',
   'over_2.5': 'totals_2.5', 'under_2.5': 'totals_2.5',
   'over_3.5': 'totals_3.5', 'under_3.5': 'totals_3.5',
+  'home_-1.5': 'spreads_1.5', 'home_+1.5': 'spreads_1.5', 'away_-1.5': 'spreads_1.5', 'away_+1.5': 'spreads_1.5',
+  'home_-2.5': 'spreads_2.5', 'home_+2.5': 'spreads_2.5', 'away_-2.5': 'spreads_2.5', 'away_+2.5': 'spreads_2.5',
+  'home_-3.5': 'spreads_3.5', 'home_+3.5': 'spreads_3.5', 'away_-3.5': 'spreads_3.5', 'away_+3.5': 'spreads_3.5',
 }
 
 // UUID v4 (relajado: acepta cualquier UUID con formato 8-4-4-4-12 hex).
