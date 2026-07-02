@@ -1,28 +1,19 @@
-name: Sync scores cron
+name: Sync scores cron (DISABLED)
 
-# Dispara /api/cron/sync-scores 4 veces al día (mas Vercel cron = 5 total)
-# para liquidar partidos terminados con latencia max ~3-4h.
+# DESHABILITADO 2026-07-02: The Odds API entrega solo el score final
+# (incluye ET, excluye penales), pero para eliminatorias necesitamos el
+# score al minuto 90 (convencion de bookmaker). A partir de cuartos, los
+# partidos se resuelven a mano desde /admin.
 #
-# Horarios (UTC con minutos non-round para escapar peak hour de GH Actions):
-#   - 13:07 UTC ≈ 09:07 AM Chile  (cubierto tambien por Vercel cron 13:00)
-#   - 16:12 UTC ≈ 12:12 PM Chile
-#   - 21:18 UTC ≈ 17:18 PM Chile
-#   - 01:23 UTC ≈ 21:23 PM Chile (del dia anterior CL)
-#
-# Costo: si NO hay matches pending en BD, syncFinishedScores early-returns
-# y la call NO toca la API → 0 creditos. Solo cobra (2 creditos) cuando hay
-# un partido recien terminado por sincronizar. Total proyectado Mundial:
-# ~150 creditos. Plan 20K cubre con holgura.
-#
-# Endpoint: /api/cron/sync-scores con Bearer CRON_SECRET.
-# Idempotente (UPDATE con guard status='pending').
+# Para reactivar: descomentar el bloque `schedule` de abajo.
+# workflow_dispatch queda disponible para disparar manualmente si hace falta.
 
 on:
-  schedule:
-    - cron: "7 13 * * *"   # 09:07 AM Chile (UTC-4)
-    - cron: "12 16 * * *"  # 12:12 PM Chile
-    - cron: "18 21 * * *"  # 17:18 PM Chile
-    - cron: "23 1 * * *"   # 21:23 PM Chile (del dia anterior CL en UTC)
+  # schedule:
+  #   - cron: "7 13 * * *"   # 09:07 AM Chile (UTC-4)
+  #   - cron: "12 16 * * *"  # 12:12 PM Chile
+  #   - cron: "18 21 * * *"  # 17:18 PM Chile
+  #   - cron: "23 1 * * *"   # 21:23 PM Chile (del dia anterior CL en UTC)
   workflow_dispatch: {}
 
 jobs:
