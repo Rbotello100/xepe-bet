@@ -10,7 +10,9 @@ import {
   getCostMetrics,
   getSecurityMetrics,
   getErrorMetrics,
+  getMatchesPendingResolve,
 } from '@/features/admin/observability/queries'
+import { PendingMatchesResolver } from '@/features/admin/components/PendingMatchesResolver'
 
 const ADMIN_EMAILS = ['rodrigo.botello@xepelin.com']
 
@@ -52,7 +54,7 @@ export default async function ObservabilityPage() {
     )
   }
 
-  const [alerts, ops, fin, crons, costs, sec, errs] = await Promise.all([
+  const [alerts, ops, fin, crons, costs, sec, errs, pendingMatches] = await Promise.all([
     getAlerts(),
     getOpsMetrics(),
     getFinancialMetrics(),
@@ -60,6 +62,7 @@ export default async function ObservabilityPage() {
     getCostMetrics(),
     getSecurityMetrics(),
     getErrorMetrics(),
+    getMatchesPendingResolve(),
   ])
 
   return (
@@ -95,6 +98,9 @@ export default async function ObservabilityPage() {
             <p className="text-sm text-muted">Todos los checks de integridad pasaron.</p>
           </Card>
         )}
+
+        {/* MATCH RESOLVER — antes de las metricas para que sea lo primero que ve el admin */}
+        <PendingMatchesResolver matches={pendingMatches} />
 
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
 
