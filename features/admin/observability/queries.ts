@@ -488,3 +488,96 @@ export async function getErrorMetrics(): Promise<ErrorMetrics> {
     recent: (recent ?? []) as ErrorRow[],
   }
 }
+
+// ---------------------------------------------------------------------
+// Match resolver — lista de partidos pendientes de resolución manual.
+//
+// Devuelve matches cuyo kickoff ya paso y siguen en status open/live —
+// tipicamente eliminatoria a la que hay que ingresarle el score al 90'
+// desde admin (el auto-cron esta apagado desde 2026-07-02 por el gap
+// de The Odds API con partidos que van a prorroga).
+//
+// Adjuntamos el "impacto" que tendria resolver el partido: cuantas
+// bets/parlay legs pending afecta y el pozo total (suma de amounts).
+// Es lo que la UI muestra en el preview antes de confirmar.
+// ---------------------------------------------------------------------
+export interface PendingResolveMatch {
+  id: string
+  round: string | null
+  starts_at: string
+  status: string
+  home_team: { name: string; flag: string | null }
+  away_team: { name: string; flag: string | null }
+  home_score: number | null
+  away_score: number | null
+  impact: {
+    bets_pending: number
+    parlay_legs_pending: number
+    stake_total: number
+    payout_at_risk: number
+  }
+  recent_resolutions_hint: null
+}
+
+export async function getMatchesPendingResolve(): Promise<PendingResolveMatch[]> {
+  const admin = createAdminClient()
+  const nowIso = new Date().toISOString()
+
+  // Partidos cuyo kickoff ya paso hace 90+ min y siguen en open/live.
+  // El threshold de 90min filtra partidos que estan jugandose (todavia
+  // no terminaron). No usamos 120 min porque el user resuelve al 90'
+  // segun convencion de bookmaker.
+  const cutoff = new Date(Date.now() - 90 * 60000).toISOString()
+
+  const { data: matches } = await admin
+    .from('matches')
+    .select(`
+      id, round, starts_at, status, home_score, away_score,
+      home_team:teams!home_team_id(name, flag),
+      away_team:teams!away_team_id(name, flag)
+    `)
+    .in('status', ['open', 'live'])
+    .lt('starts_at', cutoff)
+    .order('starts_at', { ascending: false })
+    .limit(50)
+
+  if (!matches?.length) return []
+
+  // Impacto por partido: bets pending + parlay legs pending + monto.
+  const results: PendingResolveMatch[] = []
+  for (const m of matches) {
+    const { data: bets } = await admin
+      .from('bets')
+      .select('amount, potential_payout')
+      .eq('match_id', m.id)
+      .eq('status', 'pending')
+    const { data: legs } = await admin
+      .from('parlay_legs')
+      .select('id')
+      .eq('match_id', m.id)
+      .eq('status', 'pending')
+
+    const stake = (bets ?? []).reduce((s, b) => s + Number(b.amount ?? 0), 0)
+    const payoutAtRisk = (bets ?? []).reduce((s, b) => s + Number(b.potential_payout ?? 0), 0)
+
+    results.push({
+      id: m.id,
+      round: m.round,
+      starts_at: m.starts_at,
+      status: m.status,
+      home_team: Array.isArray(m.home_team) ? m.home_team[0] : m.home_team,
+      away_team: Array.isArray(m.away_team) ? m.away_team[0] : m.away_team,
+      home_score: m.home_score,
+      away_score: m.away_score,
+      impact: {
+        bets_pending: bets?.length ?? 0,
+        parlay_legs_pending: legs?.length ?? 0,
+        stake_total: stake,
+        payout_at_risk: payoutAtRisk,
+      },
+      recent_resolutions_hint: null,
+    })
+  }
+
+  return results
+}
