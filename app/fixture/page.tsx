@@ -4,10 +4,11 @@ import { getFixtureData } from '@/features/fixture/queries'
 import { GroupTable } from '@/features/fixture/components/GroupTable'
 import { Bracket } from '@/features/fixture/components/Bracket'
 
-// Cada 60s — los standings cambian cuando termina un partido, no hace falta
-// regenerar mas seguido. El cron sync-scores corre 1x/dia + Vercel cron, asi
-// que en condiciones normales hay 0-1 cambio por hora.
-export const revalidate = 60
+// Con sync-scores manual desde /admin, la pagina se regenera al toque despues
+// de resolver un partido. Force-dynamic evita quedarse pegado a un HTML viejo
+// mientras Next.js revalida en background (Stale While Revalidate). El costo
+// es despreciable — es una pagina de solo lectura visitada esporadicamente.
+export const dynamic = 'force-dynamic'
 
 export default async function FixturePage() {
   const auth = await getOptionalAuth()
