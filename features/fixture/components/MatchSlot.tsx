@@ -1,4 +1,5 @@
 import type { MatchWithTeams } from '@/lib/types'
+import { getMatchDisplayOverride } from '../lib/match-display'
 
 interface Props {
   match?: MatchWithTeams
@@ -12,8 +13,9 @@ interface Props {
  *  - scheduled / open: matchup definido pero sin jugar — muestra "VS"
  *  - finished: scores con ganador resaltado
  *
- * El layout es compacto (180px ancho ~ 64px alto) para que el bracket
- * completo entre en la viewport sin scroll vertical.
+ * Score DB refleja el resultado al minuto 90 (para settlement). Para partidos
+ * que fueron a prorroga o penales usamos MATCH_DISPLAY_OVERRIDES para mostrar
+ * el score real y resaltar quien avanzo.
  */
 export function MatchSlot({ match, placeholder }: Props) {
   if (!match && !placeholder) {
@@ -34,22 +36,31 @@ export function MatchSlot({ match, placeholder }: Props) {
   }
 
   const m = match!
+  const override = getMatchDisplayOverride(m.home_team.name, m.away_team.name)
   const isFinished = m.status === 'finished' && m.home_score != null && m.away_score != null
-  const homeWon = isFinished && m.home_score! > m.away_score!
-  const awayWon = isFinished && m.away_score! > m.home_score!
+
+  // Con override: usa esos scores + winner explicito. Sin override: usa DB scores
+  // y calcula winner por diff (o queda sin winner en empate).
+  const displayHome = override?.home_score ?? m.home_score
+  const displayAway = override?.away_score ?? m.away_score
+  const homeWon = isFinished && (override ? override.winner === 'home' : m.home_score! > m.away_score!)
+  const awayWon = isFinished && (override ? override.winner === 'away' : m.away_score! > m.home_score!)
 
   return (
     <div className="rounded-md border border-card-border bg-card px-2 py-2 min-h-[58px]">
       <Row
         label={`${m.home_team.flag} ${m.home_team.fifa_code || m.home_team.name}`}
-        score={isFinished ? m.home_score : null}
+        score={isFinished ? displayHome : null}
         winner={homeWon}
       />
       <Row
         label={`${m.away_team.flag} ${m.away_team.fifa_code || m.away_team.name}`}
-        score={isFinished ? m.away_score : null}
+        score={isFinished ? displayAway : null}
         winner={awayWon}
       />
+      {override?.via_penalties && (
+        <p className="mt-0.5 text-center text-[9px] font-bold uppercase tracking-wider text-subtle">Penales</p>
+      )}
     </div>
   )
 }
