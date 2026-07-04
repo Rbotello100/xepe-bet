@@ -233,6 +233,19 @@ export interface WorstBetData {
   odds: number
   perdio: number
   matchLabel: string
+  // Extra para modal de detalle
+  bet_id: string
+  match_id: string
+  home_team: string
+  away_team: string
+  home_flag: string | null
+  away_flag: string | null
+  home_score: number | null
+  away_score: number | null
+  market_type: string
+  pick: string
+  created_at: string
+  resolved_at: string
 }
 
 export async function getWorstBetOfTheDay(): Promise<WorstBetData | null> {
@@ -244,9 +257,9 @@ export async function getWorstBetOfTheDay(): Promise<WorstBetData | null> {
   const { data: bet } = await admin
     .from('bets')
     .select(`
-      id, amount, odds_at_placement, pick, market_type, resolved_at,
+      id, amount, odds_at_placement, pick, market_type, resolved_at, created_at, match_id,
       user:profiles!user_id(display_name, avatar_url),
-      match:matches!match_id(home_team:teams!home_team_id(name), away_team:teams!away_team_id(name))
+      match:matches!match_id(home_score, away_score, home_team:teams!home_team_id(name, flag), away_team:teams!away_team_id(name, flag))
     `)
     .eq('status', 'lost')
     .gte('resolved_at', cutoff)
@@ -257,14 +270,20 @@ export async function getWorstBetOfTheDay(): Promise<WorstBetData | null> {
   if (!bet) return null
 
   type MatchedBet = {
+    id: string
     amount: number
     odds_at_placement: number
     pick: string
     market_type: string | null
+    resolved_at: string
+    created_at: string
+    match_id: string
     user: { display_name: string; avatar_url: string | null } | { display_name: string; avatar_url: string | null }[]
     match: {
-      home_team: { name: string } | { name: string }[]
-      away_team: { name: string } | { name: string }[]
+      home_score: number | null
+      away_score: number | null
+      home_team: { name: string; flag: string | null } | { name: string; flag: string | null }[]
+      away_team: { name: string; flag: string | null } | { name: string; flag: string | null }[]
     } | null
   }
   const b = bet as unknown as MatchedBet
@@ -304,6 +323,18 @@ export async function getWorstBetOfTheDay(): Promise<WorstBetData | null> {
     odds: Number(b.odds_at_placement),
     perdio: Number(b.amount),
     matchLabel: `${homeName} vs ${awayName}`,
+    bet_id: b.id,
+    match_id: b.match_id,
+    home_team: homeName,
+    away_team: awayName,
+    home_flag: homeObj?.flag ?? null,
+    away_flag: awayObj?.flag ?? null,
+    home_score: matchObj?.home_score ?? null,
+    away_score: matchObj?.away_score ?? null,
+    market_type: b.market_type ?? '1x2',
+    pick: b.pick,
+    created_at: b.created_at,
+    resolved_at: b.resolved_at,
   }
 }
 
