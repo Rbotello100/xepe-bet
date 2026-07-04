@@ -127,6 +127,18 @@ export interface BestBetData {
   odds: number
   payout: number
   backers: number
+  // Extra para modal de detalle
+  bet_id: string
+  match_id: string
+  home_team: string
+  away_team: string
+  home_flag: string | null
+  away_flag: string | null
+  starts_at: string | null
+  market_type: string
+  pick: string
+  created_at: string
+  match_status: string
 }
 
 export async function getBestBetOfTheDay(): Promise<BestBetData | null> {
@@ -139,9 +151,9 @@ export async function getBestBetOfTheDay(): Promise<BestBetData | null> {
   const { data: bet } = await admin
     .from('bets')
     .select(`
-      id, amount, odds_at_placement, potential_payout, pick, match_id,
+      id, amount, odds_at_placement, potential_payout, pick, market_type, match_id, created_at,
       user:profiles!user_id(display_name, avatar_url),
-      match:matches!match_id(home_team:teams!home_team_id(name), away_team:teams!away_team_id(name))
+      match:matches!match_id(status, starts_at, home_team:teams!home_team_id(name, flag), away_team:teams!away_team_id(name, flag))
     `)
     .eq('status', 'pending')
     .gte('created_at', cutoff)
@@ -159,14 +171,20 @@ export async function getBestBetOfTheDay(): Promise<BestBetData | null> {
     .eq('pick', bet.pick)
 
   type MatchedBet = {
+    id: string
     amount: number
     odds_at_placement: number
     potential_payout: number
     pick: string
+    market_type: string
+    match_id: string
+    created_at: string
     user: { display_name: string; avatar_url: string | null } | { display_name: string; avatar_url: string | null }[]
     match: {
-      home_team: { name: string } | { name: string }[]
-      away_team: { name: string } | { name: string }[]
+      status: string
+      starts_at: string
+      home_team: { name: string; flag: string | null } | { name: string; flag: string | null }[]
+      away_team: { name: string; flag: string | null } | { name: string; flag: string | null }[]
     } | null
   }
   const b = bet as unknown as MatchedBet
@@ -189,6 +207,17 @@ export async function getBestBetOfTheDay(): Promise<BestBetData | null> {
     odds: Number(b.odds_at_placement),
     payout: Number(b.potential_payout),
     backers: backers ?? 1,
+    bet_id: b.id,
+    match_id: b.match_id,
+    home_team: homeObj?.name ?? 'Local',
+    away_team: awayObj?.name ?? 'Visita',
+    home_flag: homeObj?.flag ?? null,
+    away_flag: awayObj?.flag ?? null,
+    starts_at: matchObj?.starts_at ?? null,
+    market_type: b.market_type ?? '1x2',
+    pick: b.pick,
+    created_at: b.created_at,
+    match_status: matchObj?.status ?? 'open',
   }
 }
 
