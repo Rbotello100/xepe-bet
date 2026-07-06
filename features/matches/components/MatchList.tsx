@@ -56,12 +56,16 @@ export async function MatchList({ filter = 'hoy' }: MatchListProps) {
       .select('*, home_team:teams!home_team_id(*), away_team:teams!away_team_id(*)')
       .order('starts_at'),
     getCrowdDistribution(),
-    // Odds de mercados extra (BTTS, doble chance, DNB, totals). 1X2 sigue viniendo
-    // de matches.odds_*. Esto trae ~10-12 rows por partido — para 72 partidos
-    // del Mundial = ~800 rows. Una query, sin joins, sub-100ms.
+    // Odds de mercados extra (BTTS, doble chance, DNB, totals, spreads). 1X2
+    // sigue viniendo de matches.odds_*. Esto trae ~15-21 rows por partido.
+    // Con 72 grupos + eliminatoria y multiples mercados por partido pasamos
+    // 1000 rows facil — el SDK Supabase corta silenciosamente en 1000 por
+    // default. limit(10000) es cap generoso (72*21=1512 max real) que evita
+    // truncamiento y sigue sub-100ms.
     supabase
       .from('match_market_odds')
-      .select('match_id, market_type, pick, odds, point'),
+      .select('match_id, market_type, pick, odds, point')
+      .limit(10000),
   ])
 
   if (error) {
