@@ -106,9 +106,11 @@ export const SPORT_KEY = process.env.NEXT_PUBLIC_SPORT_KEY ?? 'soccer_fifa_world
 
 // Sports activos: el cron diario corre discover() para cada uno de estos.
 // Agregar un sport = agregar aca. No requiere crons nuevos (Vercel Hobby permite solo 1x/dia).
+//
+// soccer_epl deshabilitado 2026-07-07 — durante el Mundial no queremos otras
+// ligas en el fixture. Reactivar cuando termine el WC 2026.
 export const ACTIVE_SPORT_KEYS = [
   'soccer_fifa_world_cup',
-  'soccer_epl',
 ] as const
 
 // --- Scoring Defaults ---
