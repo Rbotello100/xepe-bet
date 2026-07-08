@@ -87,8 +87,12 @@ export function isUUID(s: unknown): s is string {
 // La RPC SQL valida los mismos topes (place_parlay_atomic) como segunda capa.
 export const MIN_PARLAY_LEGS = 2
 export const MAX_PARLAY_LEGS = 10
-export const MAX_PARLAY_ODDS = 1000      // multiplicador total maximo (10 legs x 2.0 = 1024, fuera)
-export const MAX_PARLAY_PAYOUT = 50000   // tope al premio potencial en USD
+export const MAX_PARLAY_ODDS = 1000        // multiplicador total maximo (10 legs x 2.0 = 1024, fuera)
+// 2026-07-08 (arranque de cuartos): sacamos el cap efectivo. 10M = "sin limite"
+// en la practica. Mantenemos el numero como ceiling defensivo por si hay bug
+// de cuota loca. RPCs y add_credits_atomic se subieron a 10M en paralelo
+// (migration 20260708000001_uncap_parlays.sql).
+export const MAX_PARLAY_PAYOUT = 10_000_000
 
 // --- Time Locks ---
 // IMPORTANTE: BET_LOCK_HOURS se duplica en SQL como `interval '1 hour'` en la RPC
