@@ -31,6 +31,8 @@ export const MATCH_DISPLAY_OVERRIDES: Record<string, MatchDisplayOverride> = {
   'Germany|Paraguay':    { home_score: 1, away_score: 1, winner: 'away', via_penalties: true },
   'Netherlands|Morocco': { home_score: 1, away_score: 1, winner: 'away', via_penalties: true },
   'Australia|Egypt':     { home_score: 1, away_score: 1, winner: 'away', via_penalties: true },
+  // R16 con penales
+  'Switzerland|Colombia': { home_score: 0, away_score: 0, winner: 'home', via_penalties: true },
 }
 
 export function getMatchDisplayOverride(homeName: string, awayName: string): MatchDisplayOverride | undefined {
