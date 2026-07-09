@@ -9,7 +9,7 @@ import { MatchCardSkeleton } from '@/components/ui/Skeleton'
 import { getOptionalAuth } from '@/lib/auth'
 import { getActiveFeedPosts } from '@/features/ai-feed/queries'
 import { getLeaderboard } from '@/features/leaderboard/queries'
-import { getBestBetOfTheDay, getWorstBetOfTheDay, getPulseStats } from '@/features/bets/queries'
+import { getBestBetOfTheDay, getBestParlayOfTheDay, getWorstBetOfTheDay, getPulseStats } from '@/features/bets/queries'
 import { createServerClient } from '@/lib/supabase/server'
 
 interface HomePageProps {
@@ -26,12 +26,13 @@ export default async function HomePage({ searchParams }: HomePageProps) {
   const dateFilter: 'hoy' | 'manana' | 'semana' | 'todos' =
     dateRaw === 'manana' || dateRaw === 'semana' || dateRaw === 'todos' ? dateRaw : 'hoy'
 
-  const [feedPosts, leaderboard, bestBet, worstBet, pulse, matchCount, liveCount] = await Promise.all([
+  const [feedPosts, leaderboard, bestBet, bestParlay, worstBet, pulse, matchCount, liveCount] = await Promise.all([
     // 50 mensajes alcanza para ~3min de rotacion a 4s c/u; bajado de 150 por
     // performance del SSR (cada mensaje tiene metadata jsonb).
     getActiveFeedPosts(50),
     getLeaderboard(7),
     getBestBetOfTheDay(),
+    getBestParlayOfTheDay(),
     getWorstBetOfTheDay(),
     getPulseStats(),
     supabase.from('matches').select('id', { count: 'exact', head: true }).then(r => r.count ?? 0),
@@ -42,7 +43,7 @@ export default async function HomePage({ searchParams }: HomePageProps) {
     <>
       <Header user={auth?.profile ?? null} active="/" />
       <AppShell
-        left={<LeftSidebar bestBet={bestBet} worstBet={worstBet} messages={feedPosts} />}
+        left={<LeftSidebar bestBet={bestBet} bestParlay={bestParlay} worstBet={worstBet} messages={feedPosts} />}
         right={
           <>
             <BetslipSidebar />
