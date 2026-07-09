@@ -222,6 +222,89 @@ export async function getBestBetOfTheDay(): Promise<BestBetData | null> {
 }
 
 // ==========================================================
+// Best Parlay of the day — parlay pending con mayor potential_payout hoy.
+// Similar al BestBet pero para parlays multi-leg.
+// ==========================================================
+export interface BestParlayLeg {
+  home_team: string
+  away_team: string
+  home_flag: string | null
+  away_flag: string | null
+  market_type: string
+  pick: string
+  odds: number
+}
+export interface BestParlayData {
+  user: string
+  avatar: string | null
+  stake: number
+  total_odds: number
+  payout: number
+  parlay_id: string
+  created_at: string
+  legs: BestParlayLeg[]
+}
+
+export async function getBestParlayOfTheDay(): Promise<BestParlayData | null> {
+  const admin = createAdminClient()
+  const cutoff = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString()
+
+  const { data: parlay } = await admin
+    .from('parlays')
+    .select(`
+      id, amount, total_odds, potential_payout, created_at,
+      user:profiles!user_id(display_name, avatar_url)
+    `)
+    .eq('status', 'pending')
+    .gte('created_at', cutoff)
+    .order('potential_payout', { ascending: false })
+    .limit(1)
+    .maybeSingle()
+
+  if (!parlay) return null
+
+  const { data: legs } = await admin
+    .from('parlay_legs')
+    .select('market_type, pick, odds, match:matches!match_id(home_team:teams!home_team_id(name, flag), away_team:teams!away_team_id(name, flag))')
+    .eq('parlay_id', parlay.id)
+
+  type L = {
+    market_type: string
+    pick: string
+    odds: number
+    match: {
+      home_team: { name: string; flag: string | null } | { name: string; flag: string | null }[]
+      away_team: { name: string; flag: string | null } | { name: string; flag: string | null }[]
+    } | null
+  }
+  const parsedLegs: BestParlayLeg[] = ((legs ?? []) as unknown as L[]).map(l => {
+    const home = l.match ? (Array.isArray(l.match.home_team) ? l.match.home_team[0] : l.match.home_team) : null
+    const away = l.match ? (Array.isArray(l.match.away_team) ? l.match.away_team[0] : l.match.away_team) : null
+    return {
+      home_team: home?.name ?? 'Local',
+      away_team: away?.name ?? 'Visita',
+      home_flag: home?.flag ?? null,
+      away_flag: away?.flag ?? null,
+      market_type: l.market_type ?? '1x2',
+      pick: l.pick,
+      odds: Number(l.odds),
+    }
+  })
+
+  const userObj = Array.isArray(parlay.user) ? parlay.user[0] : parlay.user
+  return {
+    user: userObj?.display_name ?? 'Anonimo',
+    avatar: userObj?.avatar_url ?? null,
+    stake: Number(parlay.amount),
+    total_odds: Number(parlay.total_odds),
+    payout: Number(parlay.potential_payout),
+    parlay_id: parlay.id,
+    created_at: parlay.created_at,
+    legs: parsedLegs,
+  }
+}
+
+// ==========================================================
 // "Peor pifia del día" — la bet LOST con mayor stake en el día.
 // Contrapunto al BestBet: muestra a quien perdió más plata hoy.
 // ==========================================================
