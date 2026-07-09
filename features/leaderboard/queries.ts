@@ -1,5 +1,13 @@
 import { createServerClient } from '@/lib/supabase/server'
 
+// Users excluidos del leaderboard (ex-empleados, cuentas de test, etc).
+// Se filtran de todos los rankings publicos. Su historial de bets se
+// preserva — no borramos, solo ocultamos. Para reincorporar: remover
+// el id de este array.
+export const EXCLUDED_LEADERBOARD_USER_IDS = [
+  'a47f4f80-6d4d-48f5-bb33-776d71952389', // Camila Muñoz (despedida 2026-07-09)
+]
+
 export interface LeaderboardEntry {
   id: string
   display_name: string
@@ -21,23 +29,30 @@ export interface CasinoStatsRow {
 // ==========================================================
 export async function getLeaderboard(limit = 50): Promise<LeaderboardEntry[]> {
   const supabase = await createServerClient()
-  const { data, error } = await supabase
+  let query = supabase
     .from('profiles')
     .select('id, display_name, avatar_url, total_points, credits')
     .order('credits', { ascending: false })
-    .limit(limit)
-
+    .limit(limit + EXCLUDED_LEADERBOARD_USER_IDS.length)
+  if (EXCLUDED_LEADERBOARD_USER_IDS.length > 0) {
+    query = query.not('id', 'in', `(${EXCLUDED_LEADERBOARD_USER_IDS.join(',')})`)
+  }
+  const { data, error } = await query
   if (error) throw new Error(error.message)
-  return (data ?? []) as LeaderboardEntry[]
+  return ((data ?? []) as LeaderboardEntry[]).slice(0, limit)
 }
 
 export async function getUserRank(userId: string): Promise<number> {
+  if (EXCLUDED_LEADERBOARD_USER_IDS.includes(userId)) return 0
   const supabase = await createServerClient()
-  const { data } = await supabase
+  let query = supabase
     .from('profiles')
     .select('id')
     .order('credits', { ascending: false })
-
+  if (EXCLUDED_LEADERBOARD_USER_IDS.length > 0) {
+    query = query.not('id', 'in', `(${EXCLUDED_LEADERBOARD_USER_IDS.join(',')})`)
+  }
+  const { data } = await query
   if (!data) return 0
   const index = data.findIndex(p => p.id === userId)
   return index >= 0 ? index + 1 : 0
