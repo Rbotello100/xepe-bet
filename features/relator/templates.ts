@@ -1,6 +1,7 @@
 'use server'
 
 import { createAdminClient } from '@/lib/supabase/admin'
+import { EXCLUDED_LEADERBOARD_USER_IDS } from '@/features/leaderboard/queries'
 import {
   getCrackDelDia,
   getQuemadoDelDia,
@@ -194,7 +195,7 @@ export async function buildTemplateFeed(): Promise<Post[]> {
     // alinearse para no confundir ("dice top A en feed pero leaderboard
     // muestra top B"). Mantenemos total_points en el select por si lo
     // necesitamos como tiebreaker o info adicional.
-    admin.from('profiles').select('display_name, total_points, credits').order('credits', { ascending: false }).limit(5),
+    admin.from('profiles').select('display_name, total_points, credits').not('id', 'in', `(${EXCLUDED_LEADERBOARD_USER_IDS.join(',')})`).order('credits', { ascending: false }).limit(5),
     admin
       .from('matches')
       .select('starts_at, group_name, home:home_team_id(name), away:away_team_id(name)')
