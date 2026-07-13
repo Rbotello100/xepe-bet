@@ -33,6 +33,8 @@ export const MATCH_DISPLAY_OVERRIDES: Record<string, MatchDisplayOverride> = {
   'Australia|Egypt':     { home_score: 1, away_score: 1, winner: 'away', via_penalties: true },
   // R16 con penales
   'Switzerland|Colombia': { home_score: 0, away_score: 0, winner: 'home', via_penalties: true },
+  // QF con settlement al 90' — el bracket muestra el score real final
+  'Norway|England': { home_score: 1, away_score: 2, winner: 'away' },
 }
 
 export function getMatchDisplayOverride(homeName: string, awayName: string): MatchDisplayOverride | undefined {
