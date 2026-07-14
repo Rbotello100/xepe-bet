@@ -120,6 +120,12 @@ export async function getPulseStats(): Promise<PulseStats> {
 // Combinamos bets simples + parlays en una lista, ordenados por potential
 // payout desc (las mas grandes primero). Cap 100 para no explotar el modal.
 // ==========================================================
+export interface InPlayLeg {
+  pick_label: string
+  match_label: string
+  odds: number
+  status: 'pending' | 'won' | 'lost' | 'void'
+}
 export interface InPlayItem {
   kind: 'bet' | 'parlay'
   id: string
@@ -134,6 +140,7 @@ export interface InPlayItem {
   pick_label?: string
   // solo parlay
   legs_count?: number
+  legs?: InPlayLeg[]
 }
 
 export async function getInPlayBets(limit = 100): Promise<InPlayItem[]> {
@@ -154,7 +161,7 @@ export async function getInPlayBets(limit = 100): Promise<InPlayItem[]> {
       .select(`
         id, amount, total_odds, potential_payout, created_at,
         user:profiles!user_id(display_name, avatar_url),
-        legs:parlay_legs(id)
+        legs:parlay_legs(id, market_type, pick, odds, status, match:matches(home_team:teams!home_team_id(name), away_team:teams!away_team_id(name)))
       `)
       .eq('status', 'pending')
       .order('potential_payout', { ascending: false })
@@ -177,6 +184,17 @@ export async function getInPlayBets(limit = 100): Promise<InPlayItem[]> {
       away_team: { name: string } | { name: string }[]
     } | null
   }
+  type ParlayLegRow = {
+    id: string
+    market_type: string
+    pick: string
+    odds: number
+    status: string
+    match: {
+      home_team: { name: string } | { name: string }[]
+      away_team: { name: string } | { name: string }[]
+    } | null
+  }
   type ParlayRow = {
     id: string
     amount: number
@@ -184,7 +202,7 @@ export async function getInPlayBets(limit = 100): Promise<InPlayItem[]> {
     potential_payout: number
     created_at: string
     user: { display_name: string; avatar_url: string | null } | { display_name: string; avatar_url: string | null }[]
-    legs: { id: string }[]
+    legs: ParlayLegRow[]
   }
 
   const items: InPlayItem[] = []
@@ -208,6 +226,16 @@ export async function getInPlayBets(limit = 100): Promise<InPlayItem[]> {
   }
   for (const p of ((parlays ?? []) as unknown as ParlayRow[])) {
     const u = Array.isArray(p.user) ? p.user[0] : p.user
+    const legs: InPlayLeg[] = (p.legs ?? []).map(l => {
+      const home = l.match ? (Array.isArray(l.match.home_team) ? l.match.home_team[0] : l.match.home_team) : null
+      const away = l.match ? (Array.isArray(l.match.away_team) ? l.match.away_team[0] : l.match.away_team) : null
+      return {
+        pick_label: buildPickLabel(l.market_type ?? '1x2', l.pick, home?.name ?? 'Local', away?.name ?? 'Visita'),
+        match_label: home && away ? `${home.name} vs ${away.name}` : '?',
+        odds: Number(l.odds),
+        status: (l.status as 'pending' | 'won' | 'lost' | 'void') ?? 'pending',
+      }
+    })
     items.push({
       kind: 'parlay',
       id: p.id,
@@ -217,7 +245,8 @@ export async function getInPlayBets(limit = 100): Promise<InPlayItem[]> {
       odds: Number(p.total_odds),
       payout: Number(p.potential_payout),
       created_at: p.created_at,
-      legs_count: p.legs?.length ?? 0,
+      legs_count: legs.length,
+      legs,
     })
   }
   return items.sort((a, b) => b.payout - a.payout).slice(0, limit)
