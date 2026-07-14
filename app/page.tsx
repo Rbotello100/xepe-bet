@@ -9,7 +9,8 @@ import { MatchCardSkeleton } from '@/components/ui/Skeleton'
 import { getOptionalAuth } from '@/lib/auth'
 import { getActiveFeedPosts } from '@/features/ai-feed/queries'
 import { getLeaderboard } from '@/features/leaderboard/queries'
-import { getBestBetOfTheDay, getBestParlayOfTheDay, getWorstBetOfTheDay, getPulseStats } from '@/features/bets/queries'
+import { getBestBetOfTheDay, getBestParlayOfTheDay, getWorstBetOfTheDay, getPulseStats, getInPlayBets } from '@/features/bets/queries'
+import { InPlayDropdown } from '@/features/bets/components/InPlayDropdown'
 import { createServerClient } from '@/lib/supabase/server'
 
 interface HomePageProps {
@@ -26,7 +27,7 @@ export default async function HomePage({ searchParams }: HomePageProps) {
   const dateFilter: 'hoy' | 'manana' | 'semana' | 'todos' =
     dateRaw === 'manana' || dateRaw === 'semana' || dateRaw === 'todos' ? dateRaw : 'hoy'
 
-  const [feedPosts, leaderboard, bestBet, bestParlay, worstBet, pulse, matchCount, liveCount] = await Promise.all([
+  const [feedPosts, leaderboard, bestBet, bestParlay, worstBet, pulse, inPlayItems, matchCount, liveCount] = await Promise.all([
     // 50 mensajes alcanza para ~3min de rotacion a 4s c/u; bajado de 150 por
     // performance del SSR (cada mensaje tiene metadata jsonb).
     getActiveFeedPosts(50),
@@ -35,6 +36,7 @@ export default async function HomePage({ searchParams }: HomePageProps) {
     getBestParlayOfTheDay(),
     getWorstBetOfTheDay(),
     getPulseStats(),
+    getInPlayBets(100),
     supabase.from('matches').select('id', { count: 'exact', head: true }).then(r => r.count ?? 0),
     supabase.from('matches').select('id', { count: 'exact', head: true }).eq('status', 'live').then(r => r.count ?? 0),
   ])
@@ -96,13 +98,7 @@ export default async function HomePage({ searchParams }: HomePageProps) {
                 hint="apostado histórico"
                 tone="strong"
               />
-              <PulseStat
-                label="En juego"
-                amount={pulse.pozoEnJuego}
-                hint="bets pending"
-                tone="accent"
-                pulse
-              />
+              <InPlayDropdown amount={pulse.pozoEnJuego} items={inPlayItems} />
               <PulseStat
                 label="Pagado hoy"
                 amount={pulse.pagadoHoy}
