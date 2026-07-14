@@ -116,6 +116,114 @@ export async function getPulseStats(): Promise<PulseStats> {
 }
 
 // ==========================================================
+// In-play bets — todas las apuestas pending para el hero dropdown "En juego".
+// Combinamos bets simples + parlays en una lista, ordenados por potential
+// payout desc (las mas grandes primero). Cap 100 para no explotar el modal.
+// ==========================================================
+export interface InPlayItem {
+  kind: 'bet' | 'parlay'
+  id: string
+  user: string
+  avatar: string | null
+  stake: number
+  odds: number
+  payout: number
+  created_at: string
+  // solo bet simple
+  match_label?: string
+  pick_label?: string
+  // solo parlay
+  legs_count?: number
+}
+
+export async function getInPlayBets(limit = 100): Promise<InPlayItem[]> {
+  const admin = createAdminClient()
+  const [{ data: bets }, { data: parlays }] = await Promise.all([
+    admin
+      .from('bets')
+      .select(`
+        id, amount, odds_at_placement, potential_payout, pick, market_type, created_at,
+        user:profiles!user_id(display_name, avatar_url),
+        match:matches!match_id(home_team:teams!home_team_id(name), away_team:teams!away_team_id(name))
+      `)
+      .eq('status', 'pending')
+      .order('potential_payout', { ascending: false })
+      .limit(limit),
+    admin
+      .from('parlays')
+      .select(`
+        id, amount, total_odds, potential_payout, created_at,
+        user:profiles!user_id(display_name, avatar_url),
+        legs:parlay_legs(id)
+      `)
+      .eq('status', 'pending')
+      .order('potential_payout', { ascending: false })
+      .limit(limit),
+  ])
+
+  const { buildPickLabel } = await import('@/lib/utils/pick-label')
+
+  type BetRow = {
+    id: string
+    amount: number
+    odds_at_placement: number
+    potential_payout: number
+    pick: string
+    market_type: string
+    created_at: string
+    user: { display_name: string; avatar_url: string | null } | { display_name: string; avatar_url: string | null }[]
+    match: {
+      home_team: { name: string } | { name: string }[]
+      away_team: { name: string } | { name: string }[]
+    } | null
+  }
+  type ParlayRow = {
+    id: string
+    amount: number
+    total_odds: number
+    potential_payout: number
+    created_at: string
+    user: { display_name: string; avatar_url: string | null } | { display_name: string; avatar_url: string | null }[]
+    legs: { id: string }[]
+  }
+
+  const items: InPlayItem[] = []
+  for (const b of ((bets ?? []) as unknown as BetRow[])) {
+    const u = Array.isArray(b.user) ? b.user[0] : b.user
+    const m = b.match
+    const home = m ? (Array.isArray(m.home_team) ? m.home_team[0] : m.home_team) : null
+    const away = m ? (Array.isArray(m.away_team) ? m.away_team[0] : m.away_team) : null
+    items.push({
+      kind: 'bet',
+      id: b.id,
+      user: u?.display_name ?? 'Anonimo',
+      avatar: u?.avatar_url ?? null,
+      stake: Number(b.amount),
+      odds: Number(b.odds_at_placement),
+      payout: Number(b.potential_payout),
+      created_at: b.created_at,
+      match_label: home && away ? `${home.name} vs ${away.name}` : '?',
+      pick_label: buildPickLabel(b.market_type ?? '1x2', b.pick, home?.name ?? 'Local', away?.name ?? 'Visita'),
+    })
+  }
+  for (const p of ((parlays ?? []) as unknown as ParlayRow[])) {
+    const u = Array.isArray(p.user) ? p.user[0] : p.user
+    items.push({
+      kind: 'parlay',
+      id: p.id,
+      user: u?.display_name ?? 'Anonimo',
+      avatar: u?.avatar_url ?? null,
+      stake: Number(p.amount),
+      odds: Number(p.total_odds),
+      payout: Number(p.potential_payout),
+      created_at: p.created_at,
+      legs_count: p.legs?.length ?? 0,
+    })
+  }
+  return items.sort((a, b) => b.payout - a.payout).slice(0, limit)
+}
+
+// ==========================================================
 // Best Bet of the day — used in the left sidebar widget.
 // Returns null if no pending bet was placed today (no mock fallback).
 // ==========================================================
