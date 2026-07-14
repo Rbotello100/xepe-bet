@@ -50,22 +50,36 @@ function bucketFor(filter: DateFilter, todayKey: string, tomorrowKey: string, we
 export async function MatchList({ filter = 'hoy' }: MatchListProps) {
   const supabase = await createServerClient()
 
-  const [{ data, error }, crowd, { data: marketOddsRows }] = await Promise.all([
+  // Odds de mercados extra: paginamos en chunks de 1000 porque PostgREST
+  // (Supabase) tiene un cap server-side de 1000 rows que ignora el
+  // `.limit()` del cliente. Con 72 grupos + eliminatoria × 15-21 mercados
+  // por partido, pasamos 1500 rows fácil. Sin paginar, los mercados de
+  // los partidos "tarde en el orden" (SF/Final) caian silenciosamente
+  // fuera del primer chunk y no se renderizaban.
+  async function fetchAllMarketOdds() {
+    const all: Array<{ match_id: string; market_type: string; pick: string; odds: number; point: number | null }> = []
+    let from = 0
+    const chunkSize = 1000
+    while (true) {
+      const { data } = await supabase
+        .from('match_market_odds')
+        .select('match_id, market_type, pick, odds, point')
+        .range(from, from + chunkSize - 1)
+      if (!data?.length) break
+      all.push(...data)
+      if (data.length < chunkSize) break
+      from += chunkSize
+    }
+    return all
+  }
+
+  const [{ data, error }, crowd, marketOddsRows] = await Promise.all([
     supabase
       .from('matches')
       .select('*, home_team:teams!home_team_id(*), away_team:teams!away_team_id(*)')
       .order('starts_at'),
     getCrowdDistribution(),
-    // Odds de mercados extra (BTTS, doble chance, DNB, totals, spreads). 1X2
-    // sigue viniendo de matches.odds_*. Esto trae ~15-21 rows por partido.
-    // Con 72 grupos + eliminatoria y multiples mercados por partido pasamos
-    // 1000 rows facil — el SDK Supabase corta silenciosamente en 1000 por
-    // default. limit(10000) es cap generoso (72*21=1512 max real) que evita
-    // truncamiento y sigue sub-100ms.
-    supabase
-      .from('match_market_odds')
-      .select('match_id, market_type, pick, odds, point')
-      .limit(10000),
+    fetchAllMarketOdds(),
   ])
 
   if (error) {
