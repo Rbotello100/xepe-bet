@@ -102,6 +102,13 @@ export const MAX_PARLAY_PAYOUT = 10_000_000
 export const BET_LOCK_HOURS = 1        // bets close 1h before kickoff
 export const PREDICTION_LOCK_HOURS = 24 // predictions lock 24h before kickoff
 
+// --- Feature Flags ---
+// PODIO_ENABLED: página /podio que muestra el campeón del Mundial + top 3
+// users de Xepe Bet. Toggle rápido sin deploy: cambiar true/false y push.
+// Cuando esta off, la URL /podio muestra "próximamente" y el link no aparece
+// en el header.
+export const PODIO_ENABLED = true
+
 // --- API Sport Keys ---
 // Default sport_key used when a match has no explicit value (e.g. seeded Mundial matches).
 // import-league route stores the real sport_key per match so the score sync can query

@@ -1,5 +1,6 @@
 import Link from 'next/link'
 import Image from 'next/image'
+import { PODIO_ENABLED } from '@/lib/constants'
 
 interface HeaderProps {
   user?: { display_name: string; avatar_url: string | null; credits: number; total_points: number } | null
@@ -15,6 +16,7 @@ const NAV = [
   { label: 'Fixture', href: '/fixture' },
   { label: 'Campeón', href: '/champion' },
   { label: 'Ranking', href: '/leaderboard' },
+  ...(PODIO_ENABLED ? [{ label: '🏆 Podio', href: '/podio' }] : []),
   // { label: 'Predicciones', href: '/predictions' },
   { label: 'Apuestas', href: '/bets' },
   { label: 'Trivia', href: '/trivia' },
