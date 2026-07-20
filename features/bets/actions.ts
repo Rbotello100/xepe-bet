@@ -10,6 +10,8 @@ import {
   MAX_PARLAY_LEGS,
   MAX_PARLAY_ODDS,
   MAX_PARLAY_PAYOUT,
+  PLATFORM_READ_ONLY,
+  READ_ONLY_MSG,
   isValidPick,
   isValidMarket,
   isUUID,
@@ -100,6 +102,7 @@ function mapBetErrorCode(code: string | null): string {
 }
 
 export async function placeBet(input: BetInput) {
+  if (PLATFORM_READ_ONLY) return { error: READ_ONLY_MSG }
   const user = await getAuthUser()
   if (!user) return { error: 'No autenticado' }
   if (input.amount < MIN_BET) return { error: `Apuesta minima: $${MIN_BET}` }
@@ -214,6 +217,7 @@ export async function placeBet(input: BetInput) {
 }
 
 export async function cashOutBet(betId: string) {
+  if (PLATFORM_READ_ONLY) return { error: READ_ONLY_MSG }
   const user = await getAuthUser()
   if (!user) return { error: 'No autenticado' }
   if (!isUUID(betId)) return { error: 'ID de apuesta invalido' }
@@ -312,6 +316,7 @@ export async function cashOutBet(betId: string) {
 }
 
 export async function placeParlay(input: ParlayInput) {
+  if (PLATFORM_READ_ONLY) return { error: READ_ONLY_MSG }
   const user = await getAuthUser()
   if (!user) return { error: 'No autenticado' }
   if (input.legs.length < MIN_PARLAY_LEGS) return { error: `Minimo ${MIN_PARLAY_LEGS} selecciones` }

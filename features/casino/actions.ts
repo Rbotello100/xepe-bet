@@ -5,7 +5,7 @@ import { createAdminClient } from '@/lib/supabase/admin'
 import { revalidatePath } from 'next/cache'
 import { deductCredits, addCredits } from '@/lib/credits'
 import { logError } from '@/lib/log/error'
-import { MIN_BET, CASINO_MAX_BET } from '@/lib/constants'
+import { MIN_BET, CASINO_MAX_BET, PLATFORM_READ_ONLY, READ_ONLY_MSG } from '@/lib/constants'
 import { generateRelatorMessage } from '@/lib/relator/generate-message'
 import { getCasinoRachaMalaUsuario } from '@/features/relator/stats'
 
@@ -243,6 +243,7 @@ function checkWinLines(grid: string[]): MultiWin | null {
 }
 
 export async function playSlots() {
+  if (PLATFORM_READ_ONLY) return { error: READ_ONLY_MSG }
   const user = await getAuthUser()
   if (!user) return { error: 'No autenticado' }
   if (!(await throttleCasino(user.id))) return { error: 'Esperá un segundo entre giros' }
@@ -367,6 +368,7 @@ function getPenaltyNextProb(goalsScored: number): number {
 const PENALTY_COST = 20
 
 export async function startPenaltyGame() {
+  if (PLATFORM_READ_ONLY) return { error: READ_ONLY_MSG }
   const user = await getAuthUser()
   if (!user) return { error: 'No autenticado' }
   if (!(await throttleCasino(user.id))) return { error: 'Esperá un segundo entre acciones' }
@@ -568,6 +570,7 @@ const SCRATCH_PRIZEMAP: Record<string, number> = { '⚽': 300, '🏆': 150, '⭐
 const SCRATCH_COST = 15
 
 export async function playScratchCard() {
+  if (PLATFORM_READ_ONLY) return { error: READ_ONLY_MSG }
   const user = await getAuthUser()
   if (!user) return { error: 'No autenticado' }
   if (!(await throttleCasino(user.id))) return { error: 'Esperá un segundo entre tarjetas' }
@@ -747,6 +750,7 @@ function calcMinesMultiplier(mineCount: number, safeRevealed: number): number {
 }
 
 export async function startMines(mineCount: number) {
+  if (PLATFORM_READ_ONLY) return { error: READ_ONLY_MSG }
   const user = await getAuthUser()
   if (!user) return { error: 'No autenticado' }
   if (!(await throttleCasino(user.id))) return { error: 'Esperá un segundo entre partidas' }
@@ -988,6 +992,7 @@ interface FelipeBetInput {
 const FELIPE_MAX_BETS_PER_ROUND = 24 // todas las salas
 
 export async function placeFelipeBets(bets: FelipeBetInput[]) {
+  if (PLATFORM_READ_ONLY) return { error: READ_ONLY_MSG }
   const user = await getAuthUser()
   if (!user) return { error: 'No autenticado' }
   if (!(await throttleCasino(user.id))) return { error: 'Esperá un segundo entre rondas' }

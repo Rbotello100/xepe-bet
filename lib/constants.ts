@@ -109,6 +109,14 @@ export const PREDICTION_LOCK_HOURS = 24 // predictions lock 24h before kickoff
 // en el header.
 export const PODIO_ENABLED = true
 
+// PLATFORM_READ_ONLY: cierra todas las apuestas + casino. Activado al final
+// del Mundial. Todas las server actions de placeBet/placeParlay/cashOut/
+// casino games/outright rechazan con mensaje explicativo. Trivia queda
+// activa (es engagement puro sin flujo de plata).
+// Para reactivar (proximo torneo): cambiar a false + push.
+export const PLATFORM_READ_ONLY = true
+export const READ_ONLY_MSG = 'Xepe Bet cerrado. El Mundial 2026 terminó — nos vemos en 2028.'
+
 // --- API Sport Keys ---
 // Default sport_key used when a match has no explicit value (e.g. seeded Mundial matches).
 // import-league route stores the real sport_key per match so the score sync can query
