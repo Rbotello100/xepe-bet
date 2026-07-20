@@ -5,7 +5,7 @@ import { createAdminClient } from '@/lib/supabase/admin'
 import { addCredits, deductCredits } from '@/lib/credits'
 import { logError } from '@/lib/log/error'
 import { revalidatePath } from 'next/cache'
-import { MIN_BET, MAX_PARLAY_PAYOUT } from '@/lib/constants'
+import { MIN_BET, MAX_PARLAY_PAYOUT, PLATFORM_READ_ONLY, READ_ONLY_MSG } from '@/lib/constants'
 
 interface PlaceOutrightBetInput {
   market_id: string
@@ -23,6 +23,7 @@ interface PlaceOutrightBetInput {
  *     llegar a x300, sin tope una $5K bet pagaria $1.5M y choca con MAX_BALANCE)
  */
 export async function placeOutrightBet(input: PlaceOutrightBetInput) {
+  if (PLATFORM_READ_ONLY) return { error: READ_ONLY_MSG }
   const supabase = await createServerClient()
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return { error: 'No autenticado' }
