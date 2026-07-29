@@ -8,8 +8,9 @@ name: Daily summary cron
 # Idempotente via UPSERT en daily_summaries (UNIQUE(day)).
 
 on:
-  schedule:
-    - cron: "13 12 * * *"
+  # Deshabilitado 2026-07-20: fin del Mundial.
+  # schedule:
+  #   - cron: "13 12 * * *"
   workflow_dispatch: {}
 
 jobs:

@@ -7,9 +7,10 @@ name: Sync outright cron
 # Endpoint: /api/cron/sync-outright con Bearer CRON_SECRET. Idempotente.
 
 on:
-  schedule:
-    - cron: "37 9 * * *"    # 05:37 AM Chile
-    - cron: "37 21 * * *"   # 17:37 PM Chile (post-partidos del dia)
+  # Deshabilitado 2026-07-20: fin del Mundial.
+  # schedule:
+  #   - cron: "37 9 * * *"
+  #   - cron: "37 21 * * *"
   workflow_dispatch: {}
 
 jobs:

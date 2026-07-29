@@ -1,25 +1,4 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
-  "crons": [
-    {
-      "path": "/api/cron/sync-odds",
-      "schedule": "0 13 * * *"
-    },
-    {
-      "path": "/api/cron/generate-feed",
-      "schedule": "0 14 * * *"
-    },
-    {
-      "path": "/api/cron/daily-allowance",
-      "schedule": "23 13 * * *"
-    },
-    {
-      "path": "/api/cron/daily-summary",
-      "schedule": "28 12 * * *"
-    },
-    {
-      "path": "/api/cron/sync-outright",
-      "schedule": "47 9 * * *"
-    }
-  ]
+  "crons": []
 }

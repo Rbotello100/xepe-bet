@@ -9,8 +9,9 @@ name: Warmup cron
 # Actions cubre sin problemas.
 
 on:
-  schedule:
-    - cron: "*/5 * * * *"
+  # Deshabilitado 2026-07-20: fin del Mundial.
+  # schedule:
+  #   - cron: "*/5 * * * *"
   workflow_dispatch: {}
 
 jobs:

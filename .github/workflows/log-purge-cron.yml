@@ -8,8 +8,9 @@ name: Log purge cron
 # de scheduled workflows de GitHub Actions).
 
 on:
-  schedule:
-    - cron: "23 4 * * 1"
+  # Deshabilitado 2026-07-20: fin del Mundial.
+  # schedule:
+  #   - cron: "23 4 * * 1"
   workflow_dispatch: {}
 
 jobs:

@@ -15,12 +15,10 @@ name: Relator feed cron
 # disparar manual desde el UI de GitHub.
 
 on:
-  schedule:
-    # Cada 30 minutos, pero en minutos non-round (7 y 37) para escapar la cola
-    # de prioridad de GitHub Actions. Los patrones */30 (= :00 y :30) caen en
-    # el peak de carga global y los workflows se retrasan o saltean.
-    # https://docs.github.com/en/actions/using-workflows/events-that-trigger-workflows#schedule
-    - cron: "7,37 * * * *"
+  # Deshabilitado 2026-07-20: fin del Mundial.
+  # schedule:
+  #   # Cada 30 minutos en minutos non-round (7 y 37) para escapar peak GH Actions.
+  #   - cron: "7,37 * * * *"
   workflow_dispatch: {}
 
 jobs:
