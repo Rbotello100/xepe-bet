@@ -36,6 +36,8 @@ export const MATCH_DISPLAY_OVERRIDES: Record<string, MatchDisplayOverride> = {
   // QF con settlement al 90' — el bracket muestra el score real final
   'Norway|England': { home_score: 1, away_score: 2, winner: 'away' },
   'Argentina|Switzerland': { home_score: 3, away_score: 1, winner: 'home' },
+  // FINAL: 0-0 al 90', Spain gano 1-0 en ET (Torres 112')
+  'Spain|Argentina': { home_score: 1, away_score: 0, winner: 'home' },
 }
 
 export function getMatchDisplayOverride(homeName: string, awayName: string): MatchDisplayOverride | undefined {
