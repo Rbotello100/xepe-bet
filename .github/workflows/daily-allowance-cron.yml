@@ -20,8 +20,9 @@ name: Daily allowance cron
 # paga dos veces.
 
 on:
-  schedule:
-    - cron: "8 13 * * *"
+  # Deshabilitado 2026-07-20: fin del Mundial. Reactivar en proximo torneo.
+  # schedule:
+  #   - cron: "8 13 * * *"
   workflow_dispatch: {}
 
 jobs:
